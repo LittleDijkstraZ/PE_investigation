@@ -32,9 +32,12 @@ eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
-wandb_entity = 'ssdd'
+# wandb_entity = 'ssdd'
+wandb_entity = 'littledijkstraz'
+
 wandb_log = False # disabled by default
-wandb_project = 'owt'
+# wandb_project = 'owt'
+wandb_project = 'thesis'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 exp_name = 'default_exp_name'
 # data
@@ -100,7 +103,11 @@ use_flash = True
 data_type = 'binary' # 'binary' by default, can be 'text'
 operator = '+' # can be '+', '-', '*', 'sin', 'sqrt'
 data_shuffle = True
-data_format = 'plain' # 'plain' or 'reverse' or 'algo_reasoning'
+
+# data_format = 'plain' # 'plain' or 'reverse' or 'algo_reasoning'
+# jason: change this to reverse
+data_format = 'reverse'
+
 vocabulary = 'all_ascii_chars' # can be 'all_ascii_chars' or 'numbers_only' or 'custom_input_data'
 meta_path_specified = True # use saved meta_file (False if data_type='text')
 eps = 0
@@ -599,4 +606,3 @@ if save_final:
 
 if ddp:
     destroy_process_group()
-
