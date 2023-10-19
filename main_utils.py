@@ -153,6 +153,7 @@ def get_encode_decode(meta_path=None, tokenizer='char'):
             meta = pickle.load(f)
         # TODO want to make this more general to arbitrary encoder/decoder schemes
         stoi, itos = meta['stoi'], meta['itos']
+        print(itos.keys())
         encode = lambda s: [stoi[c] for c in s]
         decode = lambda l: ''.join([itos[i] for i in l])
     elif tokenizer:

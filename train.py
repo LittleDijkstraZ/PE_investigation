@@ -17,6 +17,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
+from pe_info.model_nope import GPTConfig as GPTConfigNOPE, GPT as GPTNOPE
 from main_utils import *
 
 # -----------------------------------------------------------------------------
@@ -119,6 +120,9 @@ random_C=False
 
 use_lora = False # use lora (from minLoRA)
 print_interval = 2  # if we're using gpt-2 model, I want to see it prompted on text
+
+# jason's changes
+use_pe = 'original'
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str, type(None)))]
@@ -267,8 +271,12 @@ if init_from == 'scratch':
     if meta_vocab_size is None:
         print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
+    if use_pe=='original':
+        gptconf = GPTConfig(**model_args)
+        model = GPT(gptconf)
+    elif use_pe == 'nope':
+        gptconf = GPTConfigNOPE(**model_args)
+        model = GPTNOPE(gptconf)
 elif init_from == 'resume':
     if resume_dir:
         checkpoint = torch.load(resume_dir, map_location=device)
@@ -283,8 +291,12 @@ elif init_from == 'resume':
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = checkpoint_model_args[k]
     # create the model
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
+    if use_pe=='original':
+        gptconf = GPTConfig(**model_args)
+        model = GPT(gptconf)
+    elif use_pe == 'nope':
+        gptconf = GPTConfigNOPE(**model_args)
+        model = GPTNOPE(gptconf)
     state_dict = checkpoint['model']
     # fix the keys of the state dictionary :(
     # honestly no idea how checkpoints sometimes get this prefix, have to debug more
@@ -304,7 +316,11 @@ elif init_from.startswith('gpt2'):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
     # initialize from OpenAI GPT-2 weights
     override_args = dict(dropout=dropout)
-    model = GPT.from_pretrained(init_from, override_args)
+    
+    if use_pe=='original':
+        model = GPT.from_pretrained(init_from, override_args)
+    elif use_pe == 'nope':
+        model = GPTNOPE.from_pretrained(init_from, override_args)
     # read off the created config params, so we can store them into checkpoint correctly
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = getattr(model.config, k)
