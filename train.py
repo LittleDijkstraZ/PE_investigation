@@ -123,6 +123,9 @@ print_interval = 2  # if we're using gpt-2 model, I want to see it prompted on t
 
 # jason's changes
 use_pe = 'original'
+# general_seed = 1337
+general_seed = 1227
+
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str, type(None)))]
@@ -151,13 +154,13 @@ else:
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
-torch.manual_seed(1337 + seed_offset)
+torch.manual_seed(general_seed + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
 torch.backends.cudnn.benchmark = True # cudnn auto-tuner
 torch.backends.cudnn.deterministic = False # cudnn auto-tuner
 # this is probably overkill but seed everything agian
-set_seed(1337 + seed_offset)
+set_seed(general_seed + seed_offset)
 
 
 device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast

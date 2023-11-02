@@ -1,7 +1,13 @@
 # train a miniature character-level shakespeare model
 # good for debugging and playing on macbooks and such
 
-out_dir = 'out2/addition_reverse_nope'
+num_digit = 7
+multi_digit = True
+
+init_from = 'resume'
+resume_dir = f'out2/addition_reverse/ckpt_10000_final.pt'
+
+out_dir = f'out2_multidigit/digit_{num_digit}/reverse_nope'
 eval_interval = 250 # keep frequent because we'll overfit
 eval_iters = 200
 log_interval = 10 # don't print too too often
@@ -10,22 +16,22 @@ log_interval = 10 # don't print too too often
 always_save_checkpoint = False
 
 wandb_log = True # override via command line if you like
-wandb_project = 'addition'
-wandb_run_name = 'addition_reverse_nope'
+wandb_project = 'addition_multidigit_ft'
+wandb_run_name = f'ft_{num_digit}digit_reverse_nope'
 
 data_type='text'
 data_format='reverse'
 operator='+'
-dataset = 'bal'
+dataset = 'multi_digit'
 batch_size = 256
 block_size = 256 # context of up to 256 previous characters
-train_data_path = 'train_3digit_10000.txt'
+train_data_path = f'{num_digit}digit_10000.txt'
 # val_data_path = 'val.bin'
-ckpt_path_name = 'ckpt_10000.pt'
+ckpt_path_name = 'ckpt.pt'
 reverse_c = True
 eval_addition = True
-start = "FILE:data/bal/test_10000.txt"
-eval_addition_train = True
+start = f"FILE:data/multi_digit/test_{num_digit}digit_10000.txt"
+# eval_addition_train = True
 # start_train = "FILE:data/one-sided-subtraction/plain/add_examples_10000_trainprompt.txt"
 
 # baby GPT model :)
@@ -34,7 +40,7 @@ n_head = 6
 n_embd = 384
 dropout = 0.2
 
-learning_rate = 1e-3 # with baby networks can afford to go a bit higher
+learning_rate = 1e-4 # with baby networks can afford to go a bit higher
 max_iters = 5000
 lr_decay_iters = 5000 # make equal to max_iters usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
@@ -47,5 +53,4 @@ device='cuda:0'
 # device = 'cpu'  # run on cpu only
 # compile = False # do not torch compile the model
 
-# jason's change starts here
 use_pe = 'nope'
