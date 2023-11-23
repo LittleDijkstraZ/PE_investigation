@@ -110,10 +110,21 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
+        # jason's modification
+        if hasattr(config, 'use_residual'):
+            self.use_residual = config.use_residual
+        else:
+            self.use_residual = True 
+        print("use_residual is set to ", self.use_residual)
 
     def forward(self, x):
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
+
+        if self.use_residual:
+            x = x + self.attn(self.ln_1(x))
+            x = x + self.mlp(self.ln_2(x))
+        else:
+            x = self.attn(self.ln_1(x))
+            x = self.mlp(self.ln_2(x))
         return x
 
 @dataclass
@@ -126,6 +137,8 @@ class GPTConfig:
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     use_flash: bool = True # use Flash Attention CUDA kernels for fast attention
+    use_residual: bool = True # Jason's change
+
 
 class GPT(nn.Module):
 
@@ -134,6 +147,8 @@ class GPT(nn.Module):
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.config = config
+
+
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
@@ -158,6 +173,8 @@ class GPT(nn.Module):
 
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
+        print(self)
+        exit()
 
     def get_num_params(self, non_embedding=True):
         """

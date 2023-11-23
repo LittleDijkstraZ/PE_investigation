@@ -123,15 +123,36 @@ print_interval = 2  # if we're using gpt-2 model, I want to see it prompted on t
 
 # jason's changes
 use_pe = 'original'
-# general_seed = 1337
-general_seed = 1227
-
+use_residual = True
+general_seed = 1337
+# general_seed = 1227
+resume_metric_from_best = True
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str, type(None)))]
 exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
+
+
+# jason's change:
+if 'use_residual' in config.keys():
+    print(f"using residual: {config['use_residual']}")
+    print(f"using residual: {use_residual}")    
+if 'use_pe' in config.keys():
+    print(f"using pe: {config['use_pe']}")
+    print(f"using pe: {use_pe}")
+
+# exit()
+# jason's change:
+pe_status = '' if use_pe=='original' else f'_{use_pe}'
+residual_status = '' if use_residual==True else f'_res={use_residual}'
+out_dir = config['out_dir'] = config['out_dir'] + pe_status + residual_status
+wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + pe_status + residual_status
+model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
+
+
+
 
 if min_lr == None:
     min_lr = learning_rate/10
@@ -266,7 +287,9 @@ if meta_path_specified:
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout, use_flash=use_flash) # start with model_args from command line
+                  bias=bias, vocab_size=None, dropout=dropout, use_flash=use_flash,
+                  use_residual=use_residual, use_pe=use_pe) # jason's change 
+# start with model_args from command line
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -274,12 +297,12 @@ if init_from == 'scratch':
     if meta_vocab_size is None:
         print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
-    if use_pe=='original':
-        gptconf = GPTConfig(**model_args)
-        model = GPT(gptconf)
-    elif use_pe == 'nope':
-        gptconf = GPTConfigNOPE(**model_args)
-        model = GPTNOPE(gptconf)
+    # if use_pe=='original':
+    #     gptconf = GPTConfig(**model_args)
+    #     model = GPT(gptconf)
+    # elif use_pe == 'nope':
+    gptconf = GPTConfigNOPE(**model_args)
+    model = GPTNOPE(gptconf)
 elif init_from == 'resume':
     if resume_dir:
         checkpoint = torch.load(resume_dir, map_location=device)
@@ -291,15 +314,15 @@ elif init_from == 'resume':
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
     # the rest of the attributes (e.g. dropout) can stay as desired from command line
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+    for k in model_specific_parameters: # jason's change
         model_args[k] = checkpoint_model_args[k]
     # create the model
-    if use_pe=='original':
-        gptconf = GPTConfig(**model_args)
-        model = GPT(gptconf)
-    elif use_pe == 'nope':
-        gptconf = GPTConfigNOPE(**model_args)
-        model = GPTNOPE(gptconf)
+    # if use_pe=='original':
+    #     gptconf = GPTConfig(**model_args)
+    #     model = GPT(gptconf)
+    # elif use_pe == 'nope':
+    gptconf = GPTConfigNOPE(**model_args)
+    model = GPTNOPE(gptconf)
     state_dict = checkpoint['model']
     # fix the keys of the state dictionary :(
     # honestly no idea how checkpoints sometimes get this prefix, have to debug more
@@ -310,22 +333,28 @@ elif init_from == 'resume':
     model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num'] if resume_iter else 0
     max_iters += iter_num
-    best_val_loss = checkpoint['best_val_loss']
-    if 'best_perplexity' in checkpoint.keys(): 
-        best_perplexity = checkpoint['best_perplexity']
-    if 'best_accuracy' in checkpoint.keys():
-        best_accuracy = checkpoint['best_accuracy']
+   
+    if resume_metric_from_best:
+        best_val_loss = checkpoint['best_val_loss']
+        if 'best_perplexity' in checkpoint.keys(): 
+            best_perplexity = checkpoint['best_perplexity']
+        if 'best_accuracy' in checkpoint.keys():
+            best_accuracy = checkpoint['best_accuracy']
+    else:
+        best_val_loss = 1e9
+        best_perplexity = 1e9
+        best_accuracy = -1
 elif init_from.startswith('gpt2'):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
     # initialize from OpenAI GPT-2 weights
     override_args = dict(dropout=dropout)
     
-    if use_pe=='original':
-        model = GPT.from_pretrained(init_from, override_args)
-    elif use_pe == 'nope':
-        model = GPTNOPE.from_pretrained(init_from, override_args)
+    # if use_pe=='original':
+        # model = GPT.from_pretrained(init_from, override_args)
+    # elif use_pe == 'nope':
+    model = GPTNOPE.from_pretrained(init_from, override_args)
     # read off the created config params, so we can store them into checkpoint correctly
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+    for k in model_specific_parameters: # jason's change
         model_args[k] = getattr(model.config, k)
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:

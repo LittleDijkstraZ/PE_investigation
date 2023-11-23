@@ -104,16 +104,31 @@ class MLP(nn.Module):
 
 class Block(nn.Module):
 
-    def __init__(self, config):
+    def __init__(self, config, id:int=None):
         super().__init__()
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
+        self.id = id
+        # jason's 
+
+        if id is not None:
+            if hasattr(config, 'use_residual'):
+                self.use_residual = config.use_residual[id]
+        else:
+            assert type(config.use_residual) is bool, "need to be bool without id"
+            self.use_residual = config.use_residual
+
+        print(f"Block {id}: use_residual is set to ", self.use_residual)
 
     def forward(self, x):
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
+        if self.use_residual:
+            x = x + self.attn(self.ln_1(x))
+            x = x + self.mlp(self.ln_2(x))
+        else:
+            x = self.attn(self.ln_1(x))
+            x = self.mlp(self.ln_2(x))
         return x
 
 @dataclass
@@ -126,29 +141,62 @@ class GPTConfig:
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     use_flash: bool = True # use Flash Attention CUDA kernels for fast attention
+    use_residual: bool = True
+    use_pe: str = 'original'
 
+import numpy as np
 class GPT(nn.Module):
 
     def __init__(self, config):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
-        self.config = config
 
-        self.transformer = nn.ModuleDict(dict(
+        # if hasattr(config, 'use_residual'):
+        #     print("use_residual is set to ", config.use_residual)
+        #     config.use_residual = False
+        #     print("use_residual is set to ", config.use_residual)
+        use_residual_layers = np.zeros(config.n_layer)
+        if hasattr(config, 'use_residual'):
+            if type(config.use_residual) is list:
+                for n in config.use_residual:
+                    use_residual_layers[n] += 1 # this allows double skip
+            elif type(config.use_residual) is int:
+                use_residual_layers[:config.use_residual] = 1
+            else:
+                assert type(config.use_residual) is bool, "need to have id to use integer or "
+                use_residual_layers = use_residual_layers + int(config.use_residual)
+        
+        config.use_residual = list(use_residual_layers)
+
+
+        transformer = dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             # wpe = nn.Embedding(config.block_size, config.n_embd), ## Nope
             drop = nn.Dropout(config.dropout),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            h = nn.ModuleList([Block(config, id=id) for id in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
-        ))
+        )
+        if hasattr(config, 'use_pe'):
+            if config.use_pe == 'original':
+                print("using original pe")
+                transformer['wpe'] = nn.Embedding(config.block_size, config.n_embd)
+            elif config.use_pe == 'nope':
+                pass
+        else:
+            config.use_pe = 'nope'                
+        print(f'PE in use: {config.use_pe}')
+        self.transformer = nn.ModuleDict(transformer)
+
+
+        self.config = config
+        
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
         # "UserWarning: functional_call was passed multiple values for tied weights.
         # This behavior is deprecated and will be an error in future versions"
         # not 100% sure what this is, so far seems to be harmless. TODO investigate
 
-        ## Nope
         self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
         # self.none_use_weights = self.lm_head.weight
         # init all weights
@@ -160,6 +208,12 @@ class GPT(nn.Module):
 
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
+        print('test_run')
+        with torch.no_grad():
+            idx = torch.ones(1, config.block_size).long()
+            self(idx) # dummy forward call to create parameter buffers
+
+        print(self)
 
     def get_num_params(self, non_embedding=True):
         """
@@ -171,7 +225,9 @@ class GPT(nn.Module):
         n_params = sum(p.numel() for p in self.parameters())
         ## Nope
         if non_embedding:
-            n_params -= self.transformer.wte.weight.numel()
+            # n_params -= self.transformer.wte.weight.numel()
+            if hasattr(self.transformer, 'wpe'):
+                n_params -= self.transformer.wpe.weight.numel() 
         return n_params
 
     def _init_weights(self, module):
@@ -188,16 +244,32 @@ class GPT(nn.Module):
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
         pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
 
-        # forward the GPT model itself
+        # forward the GPT model itselfs
 
         ## Nope
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        # pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
-        # x = self.transformer.drop(tok_emb + pos_emb)
-        x = self.transformer.drop(tok_emb)
+        if self.config.use_pe == 'original':
+            pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+            x = self.transformer.drop(tok_emb + pos_emb)
+        else:
+            x = self.transformer.drop(tok_emb)
 
-        for block in self.transformer.h:
+        temp_counter = {}
+        for bidx, block in enumerate(self.transformer.h):
             x = block(x)
+            for tcidx in temp_counter:
+                if temp_counter[tcidx]['skip_count'] > 0:
+                    temp_counter[tcidx]['skip_count'] -= 1
+                if temp_counter[tcidx]['skip_count'] == 0:
+                    x = x + temp_counter[tcidx]['x']
+                    temp_counter[tcidx]['skip_count'] = -1
+
+            skip_count = self.config.use_residual[bidx] - 1
+            if skip_count >= 0:
+                temp_counter[bidx] = {}
+                temp_counter[bidx]['skip_count'] = skip_count
+                temp_counter[bidx]['x'] = x 
+                
         x = self.transformer.ln_f(x)
 
         if targets is not None:
@@ -218,7 +290,9 @@ class GPT(nn.Module):
         assert block_size <= self.config.block_size
         self.config.block_size = block_size
         ## Nope
-        # self.transformer.wpe.weight = nn.Parameter(self.transformer.wpe.weight[:block_size])
+        if hasattr(self.transformer.wpe, 'weight'):
+            self.transformer.wpe = nn.Embedding(block_size, self.config.n_embd)
+
         for block in self.transformer.h:
             if hasattr(block.attn, 'bias'):
                 block.attn.bias = block.attn.bias[:,:,:block_size,:block_size]
@@ -281,6 +355,8 @@ class GPT(nn.Module):
                 assert sd_hf[k].shape == sd[k].shape
                 with torch.no_grad():
                     sd[k].copy_(sd_hf[k])
+        print('calling from pretrained')
+        print(model)
 
         return model
 
