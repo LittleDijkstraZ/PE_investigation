@@ -104,7 +104,7 @@ class MLP(nn.Module):
 
 class Block(nn.Module):
 
-    def __init__(self, config, id:int=None):
+    def __init__(self, config, id):
         super().__init__()
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
@@ -113,23 +113,42 @@ class Block(nn.Module):
         self.id = id
         # jason's 
 
-        if id is not None:
-            if hasattr(config, 'use_residual'):
-                self.use_residual = config.use_residual[id]
-        else:
-            assert type(config.use_residual) is bool, "need to be bool without id"
-            self.use_residual = config.use_residual
+        self.use_residual = config.use_residual[id]
+        self.no_att_residual = config.no_att_residual[id] if self.use_residual else True
+        self.no_mlp_residual = config.no_mlp_residual[id] if self.use_residual else True
+        self.layerwise_pe = config.layerwise_pe[id]
 
-        print(f"Block {id}: use_residual is set to ", self.use_residual)
+        if self.layerwise_pe:
+            self.block_size = config.block_size
+            if config.layer_pe == 'original':
+                self.layer_wpe = nn.Embedding(self.block_size, config.n_embd)
+            
+
+        print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe}")
 
     def forward(self, x):
-        if self.use_residual:
-            x = x + self.attn(self.ln_1(x))
-            x = x + self.mlp(self.ln_2(x))
-        else:
+        if self.layerwise_pe:
+            device = x.device
+            b, t, d = x.size()
+            assert t <= self.block_size, f"Block {self.id} cannot forward sequence of length {t}, block size is only {self.block_size}"
+            pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+
+            pos_emb = self.layer_wpe(pos) # position embeddings of shape (1, t, n_embd)
+            x = x + pos_emb # no dropout here
+
+        if self.no_att_residual:
             x = self.attn(self.ln_1(x))
+        else:
+            x = x + self.attn(self.ln_1(x))
+        
+        if self.no_mlp_residual:
             x = self.mlp(self.ln_2(x))
+        else:
+            x = x + self.mlp(self.ln_2(x))
+        
         return x
+
+from typing import Any
 
 @dataclass
 class GPTConfig:
@@ -141,8 +160,27 @@ class GPTConfig:
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     use_flash: bool = True # use Flash Attention CUDA kernels for fast attention
-    use_residual: bool = True
+    use_residual: Any = True
+    no_att_residual: Any = False
+    no_mlp_residual: Any = False 
     use_pe: str = 'original'
+    layerwise_pe: bool = False
+    layer_pe: str = 'original'
+    
+
+def handel_redisual(config, key):
+    attr_per_layer = np.zeros(config.n_layer)
+    if hasattr(config, key):
+        attr = config.__getattribute__(key)
+        if type(attr) is list:
+            for n in attr:
+                attr_per_layer[n] += 1 # this allows double skip
+        elif type(attr) is int:
+            attr_per_layer[:attr] = 1
+        else:
+            assert type(attr) is bool, "need to have id to use integer or "
+            attr_per_layer = attr_per_layer + int(attr)
+    return list(attr_per_layer)
 
 import numpy as np
 class GPT(nn.Module):
@@ -156,19 +194,22 @@ class GPT(nn.Module):
         #     print("use_residual is set to ", config.use_residual)
         #     config.use_residual = False
         #     print("use_residual is set to ", config.use_residual)
-        use_residual_layers = np.zeros(config.n_layer)
-        if hasattr(config, 'use_residual'):
-            if type(config.use_residual) is list:
-                for n in config.use_residual:
-                    use_residual_layers[n] += 1 # this allows double skip
-            elif type(config.use_residual) is int:
-                use_residual_layers[:config.use_residual] = 1
-            else:
-                assert type(config.use_residual) is bool, "need to have id to use integer or "
-                use_residual_layers = use_residual_layers + int(config.use_residual)
+        # use_residual_layers = np.zeros(config.n_layer)
+        # if hasattr(config, 'use_residual'):
+        #     if type(config.use_residual) is list:
+        #         for n in config.use_residual:
+        #             use_residual_layers[n] += 1 # this allows double skip
+        #     elif type(config.use_residual) is int:
+        #         use_residual_layers[:config.use_residual] = 1
+        #     else:
+        #         assert type(config.use_residual) is bool, "need to have id to use integer or "
+        #         use_residual_layers = use_residual_layers + int(config.use_residual)
         
-        config.use_residual = list(use_residual_layers)
-
+        # config.use_residual = list(use_residual_layers)
+        config.use_residual = handel_redisual(config, 'use_residual')
+        config.no_att_residual = handel_redisual(config, 'no_att_residual')
+        config.no_mlp_residual = handel_redisual(config, 'no_mlp_residual')
+        config.layerwise_pe = handel_redisual(config, 'layerwise_pe')
 
         transformer = dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
@@ -211,9 +252,10 @@ class GPT(nn.Module):
         print('test_run')
         with torch.no_grad():
             idx = torch.ones(1, config.block_size).long()
-            self(idx) # dummy forward call to create parameter buffers
+            self(idx, debug=True) # dummy forward call to create parameter buffers
 
         print(self)
+        exit()
 
     def get_num_params(self, non_embedding=True):
         """
@@ -238,7 +280,7 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets=None, debug=False):
         device = idx.device
         b, t = idx.size()
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
@@ -256,16 +298,21 @@ class GPT(nn.Module):
 
         temp_counter = {}
         for bidx, block in enumerate(self.transformer.h):
+            if debug:
+                print(bidx, end=' ')
             x = block(x)
             for tcidx in temp_counter:
-                if temp_counter[tcidx]['skip_count'] > 0:
+                if temp_counter[tcidx]['skip_count'] >= 0: # bug here (used to be >), now fixed because 
                     temp_counter[tcidx]['skip_count'] -= 1
                 if temp_counter[tcidx]['skip_count'] == 0:
                     x = x + temp_counter[tcidx]['x']
-                    temp_counter[tcidx]['skip_count'] = -1
+                    if debug:
+                        print(f'[{tcidx}]', end=' ')
+            if debug:
+                print()
 
             skip_count = self.config.use_residual[bidx] - 1
-            if skip_count >= 0:
+            if skip_count > 0:
                 temp_counter[bidx] = {}
                 temp_counter[bidx]['skip_count'] = skip_count
                 temp_counter[bidx]['x'] = x 
