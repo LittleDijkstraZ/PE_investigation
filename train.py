@@ -15,6 +15,7 @@ import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
+# torch.autograd.set_detect_anomaly(True) # jason
 
 from model import GPTConfig, GPT
 from pe_info.model_nope import GPTConfig as GPTConfigNOPE, GPT as GPTNOPE
@@ -154,8 +155,11 @@ residual_status = '' if use_residual==True else f'_res={use_residual}'
 no_att_residual_status = '' if no_att_residual==False else f"_a{no_att_residual}" if isinstance(no_att_residual, bool) else f"_a{''.join(map(str, no_att_residual))}" 
 no_mlp_residual_status = '' if no_mlp_residual==False else f"_m{no_mlp_residual}" if isinstance(no_mlp_residual, bool)  else f"_m{''.join(map(str,no_mlp_residual))}"
 layerwise_pe_status = '' if layerwise_pe==False else f"_lwp{layerwise_pe}" if isinstance(layerwise_pe, bool) else f"_lwp{''.join(map(str,layerwise_pe))}"
-out_dir = config['out_dir'] = config['out_dir'] + pe_status + residual_status + no_att_residual_status + no_mlp_residual_status + layerwise_pe_status
-wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + pe_status + residual_status + no_att_residual_status + no_mlp_residual_status + layerwise_pe_status
+n_layer_status = f"_n{n_layer}" if n_layer!=6 else ''
+out_dir = config['out_dir'] = config['out_dir'] + pe_status + residual_status + no_att_residual_status + \
+                            no_mlp_residual_status + layerwise_pe_status + n_layer_status
+wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + pe_status + residual_status + no_att_residual_status + \
+                            no_mlp_residual_status + layerwise_pe_status + n_layer_status
 model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
 

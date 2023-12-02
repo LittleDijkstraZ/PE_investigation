@@ -16,6 +16,29 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+class SinusoidalPositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super(SinusoidalPositionalEncoding, self).__init__()
+        # Create a long enough 'pe' matrix with positional encodings
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        # Register as a buffer in PyTorch (not a parameter, but should be part of the state)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        # Add positional encoding to input tensor 'x'
+        x = x + self.pe[:x.size(0), :]
+        return x
+
 # @torch.jit.script # good to enable when not using torch.compile, disable when using (our default)
 def new_gelu(x):
     """
@@ -117,24 +140,29 @@ class Block(nn.Module):
         self.no_att_residual = config.no_att_residual[id] if self.use_residual else True
         self.no_mlp_residual = config.no_mlp_residual[id] if self.use_residual else True
         self.layerwise_pe = config.layerwise_pe[id]
-
+        self.pe_type = config.layer_pe
         if self.layerwise_pe:
             self.block_size = config.block_size
             if config.layer_pe == 'original':
                 self.layer_wpe = nn.Embedding(self.block_size, config.n_embd)
+            elif config.layer_pe == 'sin':
+                self.layer_wpe = SinusoidalPositionalEncoding(config.n_embd, self.block_size)
             
 
         print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe}")
 
     def forward(self, x):
         if self.layerwise_pe:
-            device = x.device
-            b, t, d = x.size()
-            assert t <= self.block_size, f"Block {self.id} cannot forward sequence of length {t}, block size is only {self.block_size}"
-            pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+            if self.pe_type == 'original':
+                device = x.device
+                b, t, d = x.size()
+                assert t <= self.block_size, f"Block {self.id} cannot forward sequence of length {t}, block size is only {self.block_size}"
+                pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
 
-            pos_emb = self.layer_wpe(pos) # position embeddings of shape (1, t, n_embd)
-            x = x + pos_emb # no dropout here
+                pos_emb = self.layer_wpe(pos) # position embeddings of shape (1, t, n_embd)
+                x = x + pos_emb # no dropout here
+            elif self.pe_type == 'sin':
+                x = self.layer_wpe(x)
 
         if self.no_att_residual:
             x = self.attn(self.ln_1(x))
@@ -166,6 +194,7 @@ class GPTConfig:
     use_pe: str = 'original'
     layerwise_pe: bool = False
     layer_pe: str = 'original'
+    # add a deterministic option...
     
 
 def handel_redisual(config, key):
@@ -190,22 +219,6 @@ class GPT(nn.Module):
         assert config.vocab_size is not None
         assert config.block_size is not None
 
-        # if hasattr(config, 'use_residual'):
-        #     print("use_residual is set to ", config.use_residual)
-        #     config.use_residual = False
-        #     print("use_residual is set to ", config.use_residual)
-        # use_residual_layers = np.zeros(config.n_layer)
-        # if hasattr(config, 'use_residual'):
-        #     if type(config.use_residual) is list:
-        #         for n in config.use_residual:
-        #             use_residual_layers[n] += 1 # this allows double skip
-        #     elif type(config.use_residual) is int:
-        #         use_residual_layers[:config.use_residual] = 1
-        #     else:
-        #         assert type(config.use_residual) is bool, "need to have id to use integer or "
-        #         use_residual_layers = use_residual_layers + int(config.use_residual)
-        
-        # config.use_residual = list(use_residual_layers)
         config.use_residual = handel_redisual(config, 'use_residual')
         config.no_att_residual = handel_redisual(config, 'no_att_residual')
         config.no_mlp_residual = handel_redisual(config, 'no_mlp_residual')
@@ -224,6 +237,9 @@ class GPT(nn.Module):
                 transformer['wpe'] = nn.Embedding(config.block_size, config.n_embd)
             elif config.use_pe == 'nope':
                 pass
+            elif config.use_pe == 'sin':
+                print("using sin pe")
+                transformer['wpe'] = SinusoidalPositionalEncoding(config.n_embd, config.block_size)
         else:
             config.use_pe = 'nope'                
         print(f'PE in use: {config.use_pe}')
@@ -255,7 +271,6 @@ class GPT(nn.Module):
             self(idx, debug=True) # dummy forward call to create parameter buffers
 
         print(self)
-        exit()
 
     def get_num_params(self, non_embedding=True):
         """
@@ -269,7 +284,8 @@ class GPT(nn.Module):
         if non_embedding:
             # n_params -= self.transformer.wte.weight.numel()
             if hasattr(self.transformer, 'wpe'):
-                n_params -= self.transformer.wpe.weight.numel() 
+                if hasattr(self.transformer.wpe, 'weight'):
+                    n_params -= self.transformer.wpe.weight.numel() 
         return n_params
 
     def _init_weights(self, module):
@@ -281,20 +297,23 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx, targets=None, debug=False):
-        device = idx.device
-        b, t = idx.size()
-        assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-        pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+        
 
         # forward the GPT model itselfs
 
         ## Nope
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         if self.config.use_pe == 'original':
+            device = idx.device
+            b, t = idx.size()
+            assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
+            pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
             pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
-            x = self.transformer.drop(tok_emb + pos_emb)
-        else:
-            x = self.transformer.drop(tok_emb)
+            x = tok_emb + pos_emb
+        elif self.config.use_pe == 'sin':
+            x = self.transformer.wpe(tok_emb)
+
+        x = self.transformer.drop(x)
 
         temp_counter = {}
         for bidx, block in enumerate(self.transformer.h):
