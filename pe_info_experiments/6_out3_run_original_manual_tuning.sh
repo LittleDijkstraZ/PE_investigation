@@ -11,7 +11,7 @@ lr_decay_iters=5000
 general_seed=888
 
 out_dir='outputs'
-out_name="out3_iters_$max_iters"_"$general_seed"
+out_name="out3_iters_tuning"
 pe_type='original'
 # pe_type='sin'
 
@@ -19,7 +19,7 @@ echo "Running with general_seed: $out_name"
 
 
 use_residual='[0,1,2,4,5]'
-layerwise_pe_list=('[3,4,5]') # 
+layerwise_pe_list=('[4]' '[3]' 'False') # 
 
 # learning_rate_list=(0.03 0.01 0.005 0.001 0.0001)
 # learning_rate_list=(0.01 0.005 0.001 0.0001)

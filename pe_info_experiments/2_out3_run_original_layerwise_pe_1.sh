@@ -1,8 +1,7 @@
 #!/bin/bash
 
-cd "./teaching_arithmetic_pe"
 
-out_name='out3'
+out_name='ouputs/out3'
 pe_type='original'
 
 

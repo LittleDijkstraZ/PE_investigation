@@ -1,6 +1,5 @@
 #!/bin/bash
 
-cd "./teaching_arithmetic_pe"
 
 
 max_iters=7500

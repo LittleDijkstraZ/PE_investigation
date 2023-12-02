@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd "./teaching_arithmetic_pe"
+
 
 out_name='out3'
 pe_type='original'

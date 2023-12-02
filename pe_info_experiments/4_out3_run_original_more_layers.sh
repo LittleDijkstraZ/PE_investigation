@@ -1,7 +1,6 @@
 #!/bin/bash
 
-cd "./teaching_arithmetic_pe"
-
+out_dir='outputs'
 
 general_seed=888
 # set out_name to out 3 if general seed is 1337
@@ -79,7 +78,7 @@ pe_type='original'
 #       --use_pe="$pe_type" --use_residual=$use_residual \
 #       --n_layer=$n_layer \
 #       --general_seed=$general_seed \
-#       --out_dir="$out_name/addition_reverse" \
+#       --out_dir="$out_dir/$out_name/addition_reverse" \
 #       --wandb_run_name='addition_reverse' \
 #       --wandb_project="$out_name"
 
