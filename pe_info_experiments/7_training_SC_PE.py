@@ -33,12 +33,14 @@ def run_training(out_name,
     wandb_project = params['out_name']
 
     # Construct the command using parameters from the dictionary
+    layerwise_pe_repr = '['+','.join(map(str,params['layerwise_pe']))+']' if type(params['layerwise_pe']) is list else str(params['layerwise_pe'])
+    use_residual_repr = '['+','.join(map(str,params['use_residual']))+']' if type(params['use_residual']) is list else str(params['use_residual'])
     command_params = {
         'use_pe': params['pe_type'],
-        'use_residual': '['+','.join(map(str,params['use_residual']))+']',
+        'use_residual': use_residual_repr,
         'max_iters': params['max_iters'],
         'lr_decay_iters': params['lr_decay_iters'],
-        'layerwise_pe': '['+','.join(map(str,params['layerwise_pe']))+']',
+        'layerwise_pe': layerwise_pe_repr,
         'out_dir': output_directory,
         'wandb_run_name': wandb_run_name,
         'learning_rate': params['learning_rate'],
@@ -60,9 +62,15 @@ if __name__ == "__main__":
     out_name = f"out4_1201"
     os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
     
-    # no SC[i] yes lwp[i]
+    # # no SC[i] yes lwp[i]
+    # use_residual_list = [[j for j in range(6) if j != i] for i in range(6)]
+    # layerwise_pe_list = [[i] for i in range(6)]
+
+    # control no SC[i] yes lwp[i]
     use_residual_list = [[j for j in range(6) if j != i] for i in range(6)]
-    layerwise_pe_list = [[i] for i in range(6)]
+    layerwise_pe_list = [False,]*6
+
+
 
     # do a multi-processing, using 2 processes at a time
     from multiprocessing import Pool
