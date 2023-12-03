@@ -9,16 +9,16 @@ from functools import partial
 
 
 def run_tuning(trial, out_name):
-    learning_rate = trial.suggest_float("lr", 1e-5, 6e-4, log=True)
+    learning_rate = trial.suggest_float("lr", 6e-6, 6e-4, log=True)
     warmup_iters = trial.suggest_int("warmup_iters", 100, 1000, log=True)
-    layerwise_pe = '[4]'
+    layerwise_pe = '[1,2]'
     params = {
         'max_iters': 2000, # train for only a small while, e.g., 8 steps(2000 iters)
         'lr_decay_iters': 5000, # keep the original training schedule
         'general_seed': 888,
         'out_dir': 'outputs',
         'pe_type': 'original',  # or 'sin'
-        'use_residual': '[0,1,2,4,5]',
+        'use_residual': '[0,3,4,5]',
 
     }
 
@@ -50,7 +50,7 @@ def run_tuning(trial, out_name):
         'wandb_project': wandb_project
     }
 
-    command = "python train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py "
+    command = "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py "
     for key, value in command_params.items():
         command += f" --{key}={value}"
     print(command)
@@ -67,7 +67,7 @@ def run_tuning(trial, out_name):
 
 if __name__ == "__main__":
     out_dir = "./outputs"
-    out_name = f"out3_tuning"
+    out_name = f"out3_tuning_2"
     os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
     storage = JournalStorage(
         JournalFileStorage(f"{out_dir}/{out_name}/tuning.log")
@@ -88,5 +88,5 @@ if __name__ == "__main__":
     trial_function = partial(
         run_tuning, out_name = out_name
     )
-    study.optimize(trial_function, n_trials=32, n_jobs=2,)
+    study.optimize(trial_function, n_trials=32, n_jobs=1,)
     print(study.best_params)
