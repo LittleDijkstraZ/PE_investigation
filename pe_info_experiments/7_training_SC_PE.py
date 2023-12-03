@@ -2,13 +2,11 @@
 import os
 import glob
 import pandas as pd
-import wandb
 from functools import partial
 
 
 def run_training(out_name,
-    args,
-    ):
+    args,):
     layerwise_pe, use_residual = args
     pe_type='original'
     params = {
@@ -17,8 +15,12 @@ def run_training(out_name,
         'general_seed': 888,
         'out_dir': 'outputs',
         'pe_type': pe_type,  # or 'sin'
-        'learning_rate': 0.00055221,
-        'warmup_iters': 422,
+        # 'learning_rate': 0.00055221,
+        # 'warmup_iters': 422,
+
+        'learning_rate': 0.00038441,
+        'warmup_iters': 797,
+
         'use_residual': use_residual,
         'layerwise_pe': layerwise_pe,
 
@@ -70,18 +72,23 @@ if __name__ == "__main__":
     # use_residual_list = [[j for j in range(6) if j != i] for i in range(6)]
     # layerwise_pe_list = [False,]*6
 
-    # no SC[i] SC[i+1] yes lwp[i], lwp[i+1]
-    # use_residual_list = [j for j in range(6) if j not in [i, i+1] for i in range(5)]
+    # no SC[i] SC[i+1] yes lwp[i], lwp[i+1] (some fo these didn't converge, maybe smaller learning rate is needed)
+    # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
     # layerwise_pe_list = [[i, i+1] for i in range(5)]
 
     # control
+    # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
+    # layerwise_pe_list = [False,]*5
+
+    # no SC[i] SC[i+1] yes lwp=True
     use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
-    layerwise_pe_list = [False,]*5
+    layerwise_pe_list = [True for i in range(5)]
+    
 
     # do a multi-processing, using 2 processes at a time
     from multiprocessing import Pool
     from functools import partial
     pool = Pool(1)
     func = partial(run_training, out_name)
-    pool.map(func, list(zip(layerwise_pe_list, use_residual_list)))
+    pool.map(func, list(zip(layerwise_pe_list, use_residual_list,)))
     pool.close()
