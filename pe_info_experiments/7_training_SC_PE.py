@@ -15,9 +15,11 @@ def run_training(out_name,
         'general_seed': 888,
         'out_dir': 'outputs',
         'pe_type': pe_type,  # or 'sin'
-        'learning_rate': 0.00055221,
-        'warmup_iters': 422,
+        # 'learning_rate': 0.00055221,
+        # 'warmup_iters': 422,
 
+        'learning_rate': 0.00038441,
+        'warmup_iters': 797,
 
         'use_residual': use_residual,
         'layerwise_pe': layerwise_pe,
@@ -70,7 +72,7 @@ if __name__ == "__main__":
     # use_residual_list = [[j for j in range(6) if j != i] for i in range(6)]
     # layerwise_pe_list = [False,]*6
 
-    # no SC[i] SC[i+1] yes lwp[i], lwp[i+1]
+    # no SC[i] SC[i+1] yes lwp[i], lwp[i+1] (some fo these didn't converge, maybe smaller learning rate is needed)
     # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
     # layerwise_pe_list = [[i, i+1] for i in range(5)]
 
