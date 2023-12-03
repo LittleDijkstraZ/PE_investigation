@@ -2,7 +2,6 @@
 import os
 import glob
 import pandas as pd
-import wandb
 from functools import partial
 
 
@@ -71,12 +70,12 @@ if __name__ == "__main__":
     # layerwise_pe_list = [False,]*6
 
     # no SC[i] SC[i+1] yes lwp[i], lwp[i+1]
-    use_residual_list = [j for j in range(6) if j not in [i, i+1] for i in range(5)]
+    use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
     layerwise_pe_list = [[i, i+1] for i in range(5)]
 
     # control
-    # use_residual_list = [j for j in range(6) if j not in [i, i+1] for i in range(5)]
-    # layerwise_pe_list = [[i] for i in range(5)]
+    # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
+    # layerwise_pe_list = [False,]*5
 
     # do a multi-processing, using 2 processes at a time
     from multiprocessing import Pool
