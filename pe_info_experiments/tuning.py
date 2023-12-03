@@ -86,7 +86,7 @@ if __name__ == "__main__":
         load_if_exists=True,
     )
     trial_function = partial(
-        run_tuning, out_name = out_name
+    run_tuning, out_name = out_name
     )
     study.optimize(trial_function, n_trials=32, n_jobs=1,)
     print(study.best_params)
