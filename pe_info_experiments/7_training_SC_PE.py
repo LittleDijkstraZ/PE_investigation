@@ -80,12 +80,12 @@ if __name__ == "__main__":
 
     # ==================== 1201, 1202 ====================
     # no SC[i] SC[i+1] yes lwp[i], lwp[i+1] (some fo these didn't converge, maybe smaller learning rate is needed)
-    use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
-    layerwise_pe_list = [[i, i+1] for i in range(5)]
+    # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
+    # layerwise_pe_list = [[i, i+1] for i in range(5)]
 
     # control
-    # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
-    # layerwise_pe_list = [False,]*5
+    use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
+    layerwise_pe_list = [False,]*5
 
     # no SC[i] SC[i+1] yes lwp=True
     # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     # do a multi-processing, using 2 processes at a time
     from multiprocessing import Pool
     from functools import partial
-    pool = Pool(1)
+    pool = Pool(2)
     func = partial(run_training, out_name)
     pool.map(func, list(zip(layerwise_pe_list, use_residual_list,)))
     pool.close()
