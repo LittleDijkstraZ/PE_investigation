@@ -126,6 +126,9 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
+    # create a network
+    # verify by permutation
+    # theoretically casual shall not make differnce
 
     def __init__(self, config, id):
         super().__init__()
@@ -141,15 +144,15 @@ class Block(nn.Module):
         self.no_mlp_residual = config.no_mlp_residual[id] if self.use_residual else True
         self.layerwise_pe = config.layerwise_pe[id]
         self.pe_type = config.layer_pe
+        self.permute = config.permute[id]
         if self.layerwise_pe:
             self.block_size = config.block_size
             if config.layer_pe == 'original':
                 self.layer_wpe = nn.Embedding(self.block_size, config.n_embd)
             elif config.layer_pe == 'sin':
                 self.layer_wpe = SinusoidalPositionalEncoding(config.n_embd, self.block_size)
-            
 
-        print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe}")
+        print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe}")
 
     def forward(self, x):
         if self.layerwise_pe:
@@ -167,12 +170,16 @@ class Block(nn.Module):
         if self.no_att_residual:
             x = self.attn(self.ln_1(x))
         else:
-            x = x + self.attn(self.ln_1(x))
-        
+            x = x + self.attn(self.ln_1(x)) # original
+
+        if self.permute:
+            randx = torch.randperm(x.size(1)).to(x.device)
+            x = x[:, randx, :]
+
         if self.no_mlp_residual:
             x = self.mlp(self.ln_2(x))
         else:
-            x = x + self.mlp(self.ln_2(x))
+            x = x + self.mlp(self.ln_2(x)) # original
         
         return x
 
@@ -194,10 +201,11 @@ class GPTConfig:
     use_pe: str = 'original'
     layerwise_pe: bool = False
     layer_pe: str = 'original'
+    permute: bool = False
     # add a deterministic option...
     
 
-def handel_redisual(config, key):
+def handle_redisual(config, key):
     attr_per_layer = np.zeros(config.n_layer)
     if hasattr(config, key):
         attr = config.__getattribute__(key)
@@ -219,10 +227,11 @@ class GPT(nn.Module):
         assert config.vocab_size is not None
         assert config.block_size is not None
 
-        config.use_residual = handel_redisual(config, 'use_residual')
-        config.no_att_residual = handel_redisual(config, 'no_att_residual')
-        config.no_mlp_residual = handel_redisual(config, 'no_mlp_residual')
-        config.layerwise_pe = handel_redisual(config, 'layerwise_pe')
+        config.use_residual = handle_redisual(config, 'use_residual')
+        config.no_att_residual = handle_redisual(config, 'no_att_residual')
+        config.no_mlp_residual = handle_redisual(config, 'no_mlp_residual')
+        config.layerwise_pe = handle_redisual(config, 'layerwise_pe')
+        config.permute = handle_redisual(config, 'permute')
 
         transformer = dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
@@ -271,6 +280,7 @@ class GPT(nn.Module):
             self(idx, debug=True) # dummy forward call to create parameter buffers
 
         print(self)
+        exit()
 
     def get_num_params(self, non_embedding=True):
         """
