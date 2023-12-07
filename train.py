@@ -133,6 +133,7 @@ no_att_residual = False
 no_mlp_residual = False
 layerwise_pe = False
 permute = False
+not_causal = False
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str, type(None)))]
@@ -157,11 +158,12 @@ no_att_residual_status = '' if no_att_residual==False else f"_a{no_att_residual}
 no_mlp_residual_status = '' if no_mlp_residual==False else f"_m{no_mlp_residual}" if isinstance(no_mlp_residual, bool)  else f"_m{''.join(map(str,no_mlp_residual))}"
 layerwise_pe_status = '' if layerwise_pe==False else f"_lwp{layerwise_pe}" if isinstance(layerwise_pe, bool) else f"_lwp{''.join(map(str,layerwise_pe))}"
 permute_status = '' if permute==False else f"_pm{permute}" if isinstance(permute, bool) else f"_pm{''.join(map(str,permute))}"
+not_causal_status = '' if not_causal==False else f"_nc{not_causal}" if isinstance(not_causal, bool) else f"_nc{''.join(map(str,not_causal))}"
 n_layer_status = f"_n{n_layer}" if n_layer!=6 else ''
 out_dir = config['out_dir'] = config['out_dir'] + pe_status + residual_status + no_att_residual_status + \
-                            no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status
+                            no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status + not_causal_status
 wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + pe_status + residual_status + no_att_residual_status + \
-                            no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status
+                            no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status + not_causal_status
 model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
 
@@ -306,6 +308,7 @@ model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=bloc
                   no_mlp_residual=no_mlp_residual,
                   layerwise_pe=layerwise_pe,
                   permute=permute,
+                  not_causal=not_causal
                   ) # jason's change 
 
 # start with model_args from command line

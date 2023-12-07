@@ -83,6 +83,7 @@ class CausalSelfAttention(nn.Module):
                                         .view(1, 1, config.block_size, config.block_size))
         else:
             print("Using Flash Attention")
+        self.causal = bool(not config.not_causal)
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -96,11 +97,12 @@ class CausalSelfAttention(nn.Module):
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
-            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=self.causal)
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+            if self.causal:
+                att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
             att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
@@ -125,6 +127,7 @@ class MLP(nn.Module):
         x = self.dropout(x)
         return x
 
+import dataclasses
 class Block(nn.Module):
     # create a network
     # verify by permutation
@@ -132,8 +135,10 @@ class Block(nn.Module):
 
     def __init__(self, config, id):
         super().__init__()
+        self.config = dataclasses.replace(config)
+        self.config.not_causal = config.not_causal[id]
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
-        self.attn = CausalSelfAttention(config)
+        self.attn = CausalSelfAttention(self.config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
         self.id = id
@@ -152,7 +157,7 @@ class Block(nn.Module):
             elif config.layer_pe == 'sin':
                 self.layer_wpe = SinusoidalPositionalEncoding(config.n_embd, self.block_size)
 
-        print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe}")
+        print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe} | casual {not self.config.not_causal}")
 
     def forward(self, x):
         if self.layerwise_pe:
@@ -202,6 +207,7 @@ class GPTConfig:
     layerwise_pe: bool = False
     layer_pe: str = 'original'
     permute: bool = False
+    not_causal: bool = False
     # add a deterministic option...
     
 
@@ -232,6 +238,7 @@ class GPT(nn.Module):
         config.no_mlp_residual = handle_redisual(config, 'no_mlp_residual')
         config.layerwise_pe = handle_redisual(config, 'layerwise_pe')
         config.permute = handle_redisual(config, 'permute')
+        config.not_causal = handle_redisual(config, 'not_causal')
 
         transformer = dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
@@ -280,7 +287,6 @@ class GPT(nn.Module):
             self(idx, debug=True) # dummy forward call to create parameter buffers
 
         print(self)
-        exit()
 
     def get_num_params(self, non_embedding=True):
         """
