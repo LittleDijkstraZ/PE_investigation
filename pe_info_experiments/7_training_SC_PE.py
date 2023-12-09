@@ -78,21 +78,21 @@ if __name__ == "__main__":
 
 
     # ==================== 1201, 1202 ====================
-    out_name = f"out4_1202_3"
+    # out_name = f"out4_1203"
     # no SC[i] SC[i+1] yes lwp[i], lwp[i+1] (some fo these didn't converge, maybe smaller learning rate is needed)
     # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
     # layerwise_pe_list = [[i, i+1] for i in range(5)]
 
     # control
-    use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
-    layerwise_pe_list = [False,]*5
+    # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
+    # layerwise_pe_list = [False,]*5
 
     # no SC[i] SC[i+1] yes lwp=True
     # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
     # layerwise_pe_list = [True for i in range(5)]
 
     # ==================== 1201, 1202 ====================
-    # out_name = f"out4_1203_1"
+    out_name = f"out4_1203"
     # no SC[i] SC[i+1] yes lwp[i], lwp[i+1] (some fo these didn't converge, maybe smaller learning rate is needed)
     # use_residual_list = [[j for j in range(6) if j not in [i, i+1, i+2]] for i in range(4)]
     # layerwise_pe_list = [[i, i+1, i+2] for i in range(4)]

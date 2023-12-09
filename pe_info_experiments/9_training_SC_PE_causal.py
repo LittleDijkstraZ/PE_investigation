@@ -76,11 +76,13 @@ if __name__ == "__main__":
     # ==================== 1203 ====================
     out_name = f"out4_1203"
 
+    # use_residual_list = [[2,3,4,5], [2,3,4,5], [2,3,4,5]]
+    # not_causal_list = [[1,],[0,], [0, 1]]
+
     # control
-    use_residual_list = [[2,3,4,5], [2,3,4,5], [2,3,4,5]]
-    not_causal_list = [[1,],[0,], [0, 1]]
 
-
+    use_residual_list = [[0,1,2,3,4,5]]
+    not_causal_list = [[0,1,2,3,4,5]]
     # no SC[i] SC[i+1] yes lwp=True
     # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
     # layerwise_pe_list = [True for i in range(5)]

@@ -76,8 +76,8 @@ if __name__ == "__main__":
 
     # control
     # use_residual_list = [[j for j in range(6) if j not in [i]] for i in range(6)]
-    permute_list = [[i,] for i in range(6)]
-    layerwise_pe_list = [[i,] for i in range(6)]
+    # permute_list = [[i,] for i in range(6)]
+    # layerwise_pe_list = [[i,] for i in range(6)]
 
 
     # no SC[i] SC[i+1] yes lwp=True

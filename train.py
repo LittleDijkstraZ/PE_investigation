@@ -160,12 +160,13 @@ layerwise_pe_status = '' if layerwise_pe==False else f"_lwp{layerwise_pe}" if is
 permute_status = '' if permute==False else f"_pm{permute}" if isinstance(permute, bool) else f"_pm{''.join(map(str,permute))}"
 not_causal_status = '' if not_causal==False else f"_nc{not_causal}" if isinstance(not_causal, bool) else f"_nc{''.join(map(str,not_causal))}"
 n_layer_status = f"_n{n_layer}" if n_layer!=6 else ''
-out_dir = config['out_dir'] = config['out_dir'] + pe_status + residual_status + no_att_residual_status + \
-                            no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status + not_causal_status
-wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + pe_status + residual_status + no_att_residual_status + \
-                            no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status + not_causal_status
-model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
+combined_subfix =  pe_status + residual_status + no_att_residual_status + \
+            no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status + not_causal_status
+out_dir = config['out_dir'] = config['out_dir'] + combined_subfix
+wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + combined_subfix
+out_dir = out_dir + '_' + str(time.time()).split('.')[0] 
+model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
 
 

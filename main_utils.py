@@ -92,6 +92,7 @@ def get_results_dir(config):
     
     os.makedirs(results_dir, exist_ok=True)
 
+    
     return results_dir
 
 
