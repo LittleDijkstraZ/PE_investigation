@@ -170,6 +170,7 @@ import datetime
 current_datetime = datetime.datetime.now()
 formatted_datetime = current_datetime.strftime("%y%m%d%H%M")
 out_dir = config['out_dir'] = out_dir + '_' + str(formatted_datetime)
+wandb_run_name = config['wandb_run_name'] = wandb_run_name + str(formatted_datetime)
 model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
 

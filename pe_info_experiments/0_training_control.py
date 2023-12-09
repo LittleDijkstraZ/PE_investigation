@@ -12,7 +12,7 @@ def run_training(out_name, params_dict_updates):
     params = {
         'max_iters': 5000, 
         'lr_decay_iters': 5000, # keep the original training schedule
-        'general_seed': 888,
+        'general_seed': 555,
         'out_dir': 'outputs',
         'pe_type': pe_type,  # or 'sin'
         # 'learning_rate': 0.00055221,
