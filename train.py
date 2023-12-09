@@ -17,7 +17,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 # torch.autograd.set_detect_anomaly(True) # jason
 
-from model import GPTConfig, GPT
+# from model import GPTConfig, GPT
 from pe_info.model_nope import GPTConfig as GPTConfigNOPE, GPT as GPTNOPE
 from main_utils import *
 
@@ -161,13 +161,16 @@ permute_status = '' if permute==False else f"_pm{permute}" if isinstance(permute
 not_causal_status = '' if not_causal==False else f"_nc{not_causal}" if isinstance(not_causal, bool) else f"_nc{''.join(map(str,not_causal))}"
 n_layer_status = f"_n{n_layer}" if n_layer!=6 else ''
 
-combined_subfix =  pe_status + residual_status + no_att_residual_status + \
+combined_subfix = pe_status + residual_status + no_att_residual_status + \
             no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status + not_causal_status
 out_dir = config['out_dir'] = config['out_dir'] + combined_subfix
 wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + combined_subfix
-out_dir = out_dir + '_' + str(time.time()).split('.')[0] 
-model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
+import datetime
+current_datetime = datetime.datetime.now()
+formatted_datetime = current_datetime.strftime("%y%m%d%H%M")
+out_dir = config['out_dir'] = out_dir + '_' + str(formatted_datetime)
+model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
 
 if min_lr == None:

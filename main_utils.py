@@ -10,7 +10,8 @@ import copy
 import pandas as pd
 import tiktoken
 
-from model import GPTConfig, GPT
+# from model import GPTConfig, GPT
+from pe_info.model_nope import GPTConfig, GPT
 
 def load_trained_model(config, checkpoint=None):
     init_from = config['init_from']

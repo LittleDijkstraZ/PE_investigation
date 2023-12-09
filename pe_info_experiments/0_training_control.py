@@ -35,7 +35,7 @@ def run_training(out_name, params_dict_updates):
 
     
     # Construct the output directory and other variables
-    output_directory = os.path.join(params['out_dir'], f"{params['out_name']}/{params['out_name']}")
+    output_directory = os.path.join(params['out_dir'], f"{params['out_name']}/{wandb_run_name}")
     wandb_project = params['out_name']
 
     # Construct the command using parameters from the dictionary
