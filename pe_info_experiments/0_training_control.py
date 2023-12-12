@@ -6,7 +6,6 @@ from functools import partial
 
 
 def run_training(out_name, params_dict_updates):
-    pe_type='original'
     wandb_run_name = f"addition_reverse"
 
     params = {
@@ -14,15 +13,19 @@ def run_training(out_name, params_dict_updates):
         'lr_decay_iters': 5000, # keep the original training schedule
         'general_seed': 555,
         'out_dir': 'outputs',
-        'pe_type': pe_type,  # or 'sin'
+        'pe_type': 'original',  # or 'sin'
         # 'learning_rate': 0.00055221,
         # 'warmup_iters': 422,
 
         # 'learning_rate': 0.00038441, # 1202
         # 'warmup_iters': 797,
         
-        'learning_rate': 0.00026441, # 1202 manual
+        # 'learning_rate': 0.00026441, # 1202 manual
+        # 'warmup_iters': 797,
+
+        'learning_rate': 0.00013441, # 1212 manual
         'warmup_iters': 797,
+
 
         # 'use_residual': use_residual,
         # 'layerwise_pe': layerwise_pe,
@@ -72,7 +75,8 @@ if __name__ == "__main__":
 
 
     use_residual_list = [[0,1,2,3,4,5]]
-    # not_causal_list = [[0,1,2,3,4,5]]
+    not_causal_list = [[0,1,2,3,4,5]] 
+    pe_type_list = ['original'] * len(use_residual_list)
     # no SC[i] SC[i+1] yes lwp=True
     # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
     # layerwise_pe_list = [True for i in range(5)]
@@ -80,6 +84,8 @@ if __name__ == "__main__":
     args = [{
         # 'not_causal': not_causal_list[i],
         'use_residual': use_residual_list[i],
+        # 'not_causal': not_causal_list[i],
+        'pe_type': pe_type_list[i],
         # 'layerwise_pe_list': layerwise_pe_list[i],
     } for i in range(len(use_residual_list))]
     
@@ -90,6 +96,6 @@ if __name__ == "__main__":
     from functools import partial
     pool = Pool(1)
     func = partial(run_training, out_name)
-
+ 
     pool.map(func, args)
     pool.close()

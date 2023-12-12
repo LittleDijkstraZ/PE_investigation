@@ -446,7 +446,7 @@ if ddp:
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
-def estimate_loss():
+def estimate_loss():  # this function sometimes get things wrong
     out = {}
     model.eval()
     for split in ['train', 'val']:
@@ -552,12 +552,14 @@ while True:
             train_accuracy, _ = evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, num_digit=num_digit, zero_pad=zero_pad, 
                                                         reverse_ab=reverse_ab, reverse_c=reverse_c, algo_reason=algo_reason, 
                                                         binary=binary, data_type=data_type, operator=operator, data_format=data_format)
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        print(f"step {iter_num}: train loss {losses['train'].item():.4f}, val loss {losses['val'].item():.4f}")
         if wandb_log:
             wandb_dict = {
                 "iter": iter_num,
-                "train/loss": losses['train'],
-                "val/loss": losses['val'],
+                # "train/loss": losses['train'], # has some problem
+                'train/loss': losses['train'].item(),
+                # "val/loss": losses['val'],
+                'val/loss': losses['val'].item(),
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage,
                 "ppl": ppl if eval_text else None, 
