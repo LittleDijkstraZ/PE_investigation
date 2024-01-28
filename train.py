@@ -168,9 +168,9 @@ wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + combined_
 
 import datetime
 current_datetime = datetime.datetime.now()
-formatted_datetime = current_datetime.strftime("%y%m%d%H%M")
-out_dir = config['out_dir'] = out_dir + '_' + str(formatted_datetime)
-wandb_run_name = config['wandb_run_name'] = wandb_run_name + str(formatted_datetime)
+formatted_datetime = 'T' + current_datetime.strftime("%y%m%d%H%M") + '_'
+out_dir = config['out_dir'] = str(formatted_datetime) + out_dir 
+wandb_run_name = config['wandb_run_name'] =  str(formatted_datetime) + wandb_run_name
 model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
 
 
@@ -515,7 +515,21 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses = estimate_loss()
+        # losses = estimate_loss() # jason: this line seem to have some issue with global variables?
+
+        losses = {}
+        model.eval()
+        with torch.no_grad():
+            for split in ['train', 'val']:
+                all_loss = torch.zeros(eval_iters)
+                for k in range(eval_iters):
+                    X, Y = get_batch(split)
+                    with ctx:
+                        logits, loss = model(X, Y)
+                    all_loss[k] = loss.item()
+                losses[split] = all_loss.mean().detach().cpu().numpy()
+        model.train()
+
         if eval_text:
             ppl = evaluate_text(config, model, eval_text_data, ctx)
             print(f"perplexity of evluation text data: {ppl}")
@@ -552,14 +566,14 @@ while True:
             train_accuracy, _ = evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, num_digit=num_digit, zero_pad=zero_pad, 
                                                         reverse_ab=reverse_ab, reverse_c=reverse_c, algo_reason=algo_reason, 
                                                         binary=binary, data_type=data_type, operator=operator, data_format=data_format)
-        print(f"step {iter_num}: train loss {losses['train'].item():.4f}, val loss {losses['val'].item():.4f}")
+        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             wandb_dict = {
                 "iter": iter_num,
-                # "train/loss": losses['train'], # has some problem
-                'train/loss': losses['train'].item(),
-                # "val/loss": losses['val'],
-                'val/loss': losses['val'].item(),
+                "train/loss": losses['train'], # has some problem
+                # 'train/loss': losses['train'].item(),
+                "val/loss": losses['val'],
+                # 'val/loss': losses['val'].item(),
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage,
                 "ppl": ppl if eval_text else None, 
@@ -573,8 +587,8 @@ while True:
             wandb.log(wandb_dict)
 
         result_dict['iter'].append(iter_num)
-        result_dict['train_loss'].append(losses['train'].item())
-        result_dict['val_loss'].append(losses['val'].item())
+        result_dict['train_loss'].append(losses['train'])
+        result_dict['val_loss'].append(losses['val'])
         result_dict['val_ppl'].append(ppl.item() if eval_text else None)
         result_dict['test_acc'].append(test_accuracy if eval_addition else None)
         result_dict['train_acc'].append(train_accuracy if eval_addition_train else None)

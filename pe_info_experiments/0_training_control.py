@@ -84,7 +84,7 @@ if __name__ == "__main__":
     args = [{
         # 'not_causal': not_causal_list[i],
         'use_residual': use_residual_list[i],
-        # 'not_causal': not_causal_list[i],
+        'not_causal': not_causal_list[i],
         'pe_type': pe_type_list[i],
         # 'layerwise_pe_list': layerwise_pe_list[i],
     } for i in range(len(use_residual_list))]

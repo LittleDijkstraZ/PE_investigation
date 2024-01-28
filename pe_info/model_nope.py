@@ -26,17 +26,17 @@ class SinusoidalPositionalEncoding(nn.Module):
         
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
+        pe = pe.unsqueeze(0)
         # Register as a buffer in PyTorch (not a parameter, but should be part of the state)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
         """
         Args:
-            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+            x: Tensor, shape [batch_size, sequence_length, embedding_dim]
         """
         # Add positional encoding to input tensor 'x'
-        x = x + self.pe[:x.size(0), :]
+        x = x + self.pe[:, :x.size(1), :]
         return x
 
 # @torch.jit.script # good to enable when not using torch.compile, disable when using (our default)
@@ -84,6 +84,7 @@ class CausalSelfAttention(nn.Module):
         else:
             print("Using Flash Attention")
         self.causal = bool(not config.not_causal)
+        # self._reset_parameters() # unfortunately, this does not help with the issue with normal attention
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -100,12 +101,15 @@ class CausalSelfAttention(nn.Module):
             if self.causal:
                 y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
             else:
-                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout if self.training else 0)
+                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0)
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            print('attention weights before masking', att.shape)
             if self.causal:
                 att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+            print('attention weights after masking', att.shape)
+            
             att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
@@ -114,6 +118,13 @@ class CausalSelfAttention(nn.Module):
         # output projection
         y = self.resid_dropout(self.c_proj(y))
         return y
+    
+    def _reset_parameters(self):
+        print('normal_init')
+        nn.init.normal_(self.c_attn.weight)
+        nn.init.normal_(self.c_proj.weight)
+        return 
+
 
 class MLP(nn.Module):
 
@@ -130,6 +141,52 @@ class MLP(nn.Module):
         x = self.dropout(x)
         return x
 
+import torch.nn.functional as F
+
+class SelfAttention(nn.Module):
+    def __init__(self, embed_dim, num_heads):
+        super(SelfAttention, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+
+        # Linear projections for query, key, and value
+        self.W_q = nn.Linear(embed_dim, embed_dim)
+        self.W_k = nn.Linear(embed_dim, embed_dim)
+        self.W_v = nn.Linear(embed_dim, embed_dim)
+
+    def split_heads(self, x):
+        batch_size, seq_len, embed_dim = x.size()
+        x = x.view(batch_size, seq_len, self.num_heads, self.head_dim)
+        return x.permute(0, 2, 1, 3)
+
+    def forward(self, x):
+        batch_size, seq_len, embed_dim = x.size()
+
+        # Linearly project the input to queries, keys, and values
+        q = self.W_q(x)
+        k = self.W_k(x)
+        v = self.W_v(x)
+
+        # Split the queries, keys, and values into multiple heads
+        q = self.split_heads(q)
+        k = self.split_heads(k)
+        v = self.split_heads(v)
+
+        # Calculate scaled dot-product attention scores
+        scores = torch.matmul(q, k.permute(0, 1, 3, 2)) / (self.head_dim ** 0.5)
+
+        # Apply the softmax activation to obtain attention weights
+        attention_weights = F.softmax(scores, dim=-1)
+
+        # Apply the attention weights to the values
+        output = torch.matmul(attention_weights, v)
+
+        # Reshape and concatenate the output from different heads
+        output = output.permute(0, 2, 1, 3).contiguous().view(batch_size, seq_len, embed_dim)
+
+        return output
+
 import dataclasses
 class Block(nn.Module):
     # create a network
@@ -141,7 +198,13 @@ class Block(nn.Module):
         self.config = dataclasses.replace(config)
         self.config.not_causal = config.not_causal[id]
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        # if config.not_causal[id]:
+        #     print('using non causal attention')
+        #     self.attn = SelfAttention(config.n_embd, config.n_head)
+        # else:
+        #     print('using causal attention')
         self.attn = CausalSelfAttention(self.config)
+
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
         self.id = id
@@ -252,12 +315,10 @@ class GPT(nn.Module):
         )
         if hasattr(config, 'use_pe'):
             if config.use_pe == 'original':
-                print("using original pe")
                 transformer['wpe'] = nn.Embedding(config.block_size, config.n_embd)
             elif config.use_pe == 'nope':
                 pass
             elif config.use_pe == 'sin':
-                print("using sin pe")
                 transformer['wpe'] = SinusoidalPositionalEncoding(config.n_embd, config.block_size)
         else:
             config.use_pe = 'nope'                
