@@ -2,3 +2,6 @@ outputs/*
 wandb/*
 
 **__pycache__/*
+
+*.svg
+*.png

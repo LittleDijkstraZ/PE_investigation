@@ -34,7 +34,7 @@ for arg in sys.argv[1:]:
             key = 'start'
             val = arg[8:]
         else:
-            key, val = arg.split('=')
+            key, val = arg.split('=', 1)
             key = key[2:]
         if key in globals():
             try:

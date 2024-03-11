@@ -163,15 +163,19 @@ n_layer_status = f"_n{n_layer}" if n_layer!=6 else ''
 
 combined_subfix = pe_status + residual_status + no_att_residual_status + \
             no_mlp_residual_status + layerwise_pe_status + n_layer_status + permute_status + not_causal_status
-out_dir = config['out_dir'] = config['out_dir'] + combined_subfix
-wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + combined_subfix
+
+# out_dir = config['out_dir'] = config['out_dir'] + combined_subfix
+# wandb_run_name = config['wandb_run_name'] = config['wandb_run_name'] + combined_subfix
 
 import datetime
 current_datetime = datetime.datetime.now()
-formatted_datetime = 'T' + current_datetime.strftime("%y%m%d%H%M") + '_'
-out_dir = config['out_dir'] = str(formatted_datetime) + out_dir 
-wandb_run_name = config['wandb_run_name'] =  str(formatted_datetime) + wandb_run_name
-model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual']
+formatted_datetime = '_T' + current_datetime.strftime("%y%m%d%H%M") 
+out_dir = config['out_dir'] =  out_dir + str(formatted_datetime) + combined_subfix
+wandb_run_name = config['wandb_run_name'] = wandb_run_name + str(formatted_datetime) + combined_subfix
+
+
+
+model_specific_parameters = ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'use_residual', 'use_pe', 'no_att_residual', 'no_mlp_residual', 'layerwise_pe', 'permute', 'not_causal']
 
 
 if min_lr == None:
@@ -235,7 +239,7 @@ else:
     data_dir = os.path.join('data', dataset)
     train_data_path = os.path.join(data_dir, train_data_path)
     # val_data = os.path.join(data_dir, val_data_path)
-    train_data_list = get_data_list(train_data_path, operator=operator)
+    train_data_list = get_data_list(train_data_path, operator=operator) # a list of (x, y, op)
     val_data_list = get_data_list(filename=None, operator=operator) # get_data_list(val_data, operator='+')
     train_data_str = generate_data_str(train_data_list, operator=operator, format=data_format, train=True, shuffle=data_shuffle, add_space=add_space, simple=simple, random_A=random_A, random_C=random_C)
     val_data_str = generate_data_str(val_data_list, operator=operator, format=data_format, train=True, shuffle=data_shuffle, add_space=add_space, simple=simple, random_A=random_A, random_C=random_C)
@@ -244,7 +248,7 @@ else:
     train_data = data_encoder(train_data_str)
     val_data = data_encoder(val_data_str)
     if eval_addition_train and start_train is None:
-        # specify the start_train to be oour train data file
+        # specify the start_train to be our train data file
         start_train = f"FILE:{train_data_path}"
         
     if train_both:
@@ -261,7 +265,7 @@ else:
         eval_text_data = data_encoder(text_data_str)
 
 
-def get_batch(split):
+def get_batch(split, is_causal=True):
     data = train_data if split == 'train' else val_data
     if train_both:
         data2 = train_data2 if split == 'train' else val_data2

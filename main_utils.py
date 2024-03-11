@@ -269,21 +269,26 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         operation = '-'
     elif '*' in abc:
         operation = '*'
-
+    elif 'parity(' in abc:
+        operation = 'parity'
+    elif 'sumd(' in abc:
+        operation = 'sumd'
+    elif 'oddc(' in abc:
+        operation = 'oddc'
     else:
         print(f'operation not found, abc: {abc}')
 
     if operation in ['+', '-', '*']:
         [a,b] = abc.split(operation)
 
-    elif operation in ['sin', 'sqrt']:
+    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
             # a, _ = abc.strip().split('=')
             a = abc.strip().split('=')[0]
         a = a.replace(operation, '').replace('(', '').replace(')', '')
-        b = ''
+        b = '' # this ensures no carry operations 
 
     if a[0] == '$':
         a = a[1:]
@@ -324,6 +329,13 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
             c = float(c)
         else:
             c = math.floor(math.sqrt(float(a)) * 10000) / 10000
+
+    elif operation == 'parity':
+        c = a.count('1') % 2
+    elif operation == 'sumd':
+        c = sum([int(i) for i in a])
+    elif operation == 'oddc':
+        c = sum([int(d)%2 for d in a])
     
     if '\n' in b: b = b[:-1]
 
@@ -695,6 +707,19 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'wrong  : {op}({a})={c_hat2}')
                                 print(f'correct: {op}({a})={c}')
 
+                    elif op in ['parity', 'sumd', 'oddc']:
+                        if type(c)!= str and c==c_hat2:
+                            correct+=1
+                            carry_dictionary[f'carry{num_carry}_correct']+=1
+                            if verbose_correct:
+                                print('outputs(o): ', outcome)
+                                print(f'correct: parity({a})={c}')
+                        else:
+                            if verbose:
+                                print('outputs(x): ', outcome)
+                                print(f'wrong  : parity({a})={c_hat2}')
+                                print(f'correct: parity({a})={c}')
+
                     carry_dictionary[f'carry{num_carry}_total']+=1
 
                     metric_types = ['mse', 'normalized_mse', 'digit_wise_difference', 'incorrect_digit_count']
@@ -1005,7 +1030,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print('outputs(x): ', outcome)
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
-                    elif op in ['sin', 'sqrt']:
+                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1092,10 +1117,15 @@ def get_data_list(filename=None, operator='+', delim=None):
                         y = math.sin(float(x))
                     elif operator == 'sqrt':
                         y = math.sqrt(float(x))
+                    
                     y = math.floor(y * 10000) / 10000
-
                     data_list.append((float(x), float(y), operator))
 
+                elif operator in ['parity', 'sumd', 'oddc']:
+                    x = line.strip().split('=')[0]
+                    x = x.replace(operator, '').replace('(', '').replace(')', '')
+                    y = line.strip().split('=')[1]
+                    data_list.append((int(x), int(y), operator))
 
     else: # generate random data
         if operator in ['text']:
@@ -1130,8 +1160,22 @@ def get_data_list(filename=None, operator='+', delim=None):
                         y = math.sqrt(x)
                         
                     y = math.floor(y * 10000) / 10000
-
                     data_list.append((float(x), float(y), operator))
+
+                elif operator == 'parity':
+                    x = random.randint(0, 2**12-1)
+                    y = bin(x)[2:].count('1') % 2
+                    data_list.append((int(x), int(y), operator))
+
+                elif operator == 'sumd':
+                    x = random.randint(0, 999999+1)
+                    y = sum([int(digit) for digit in str(x)])
+                    data_list.append((int(x), int(y), operator))
+
+                elif operator == 'oddc':
+                    x = random.randint(0, 999999+1)
+                    y = sum([int(digit)%2 for digit in str(x)]) 
+                    data_list.append((int(x), int(y), operator))
 
     return data_list
 
@@ -1573,6 +1617,25 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
                 data_str = output_str
             else:
                 data_str += output_str
+
+        elif operator in ['parity', 'sumd', 'oddc']:
+            x, y = data_tuple[0], data_tuple[1]
+
+            if train:
+                output_str = f"{operator}({x})={y}\n"
+            else:
+                output_str = f"{operator}({x})=\n"
+
+            if fewshot:
+                output_str = prompt + output_str + '\n'
+            if add_space:
+                output_str = add_spaces(output_str)
+
+            if idx == 0:
+                data_str = output_str
+            else:
+                data_str += output_str
+
         
         elif operator in ['text']:
             output_str = data_tuple[0]

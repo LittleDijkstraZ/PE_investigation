@@ -120,7 +120,6 @@ class CausalSelfAttention(nn.Module):
         return y
     
     def _reset_parameters(self):
-        print('normal_init')
         nn.init.normal_(self.c_attn.weight)
         nn.init.normal_(self.c_proj.weight)
         return 
@@ -140,6 +139,11 @@ class MLP(nn.Module):
         x = self.c_proj(x)
         x = self.dropout(x)
         return x
+    
+    def _reset_parameters(self):
+        nn.init.normal_(self.c_fc.weight)
+        nn.init.normal_(self.c_proj.weight)
+        return 
 
 import torch.nn.functional as F
 
@@ -237,11 +241,15 @@ class Block(nn.Module):
                 x = x + pos_emb # no dropout here
             elif self.pe_type == 'sin':
                 x = self.layer_wpe(x)
-
+        
         if self.no_att_residual:
             x = self.attn(self.ln_1(x))
+            # x = self.attn(x)
+
         else:
             x = x + self.attn(self.ln_1(x)) # original
+            # x = x + self.attn(x)
+
 
         if self.permute:
             randx = torch.randperm(x.size(1)).to(x.device)
@@ -271,7 +279,7 @@ class GPTConfig:
     no_mlp_residual: Any = False 
     use_pe: str = 'original'
     layerwise_pe: bool = False
-    layer_pe: str = 'original'
+    layer_pe: str = 'original' # [original, sin]
     permute: bool = False
     not_causal: bool = False
     # add a deterministic option...
@@ -425,6 +433,7 @@ class GPT(nn.Module):
             logits = self.lm_head(x)
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         else:
+            # print('check what is used to predict', x.shape) 
             # inference-time mini-optimization: only forward the lm_head on the very last position
             logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
             loss = None
