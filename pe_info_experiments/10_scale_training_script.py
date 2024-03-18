@@ -52,7 +52,8 @@ def run_training(out_name,
     # wandb_run_name = f"addition_reverse_sd{params['general_seed']}{params['message']}"
     # wandb_run_name = f"parity_sd{params['general_seed']}{params['message']}"
     # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"
-    wandb_run_name = f"oddc_sd{params['general_seed']}{params['message']}"
+    choice = kwargs['choice']
+    wandb_run_name = f"{choice}_sd{params['general_seed']}{params['message']}"
         
         
 
@@ -194,6 +195,7 @@ if __name__ == "__main__":
                     'use_pe': use_pe,
                     'general_seed': seed,
                     'command': commands_dict[choice],
+                    'choice': choice,
                     # 'no_att_residual': no_att_residual_list[i],
                     # 'no_mlp_residual': no_mlp_residual_list[i],
                     # 'batch_size': bs[i],
