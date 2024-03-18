@@ -125,7 +125,7 @@ if __name__ == "__main__":
     # 1. loss is weird
 
 
-    # use_residual_list0 = [[0,3,4,5]]
+    # use_residual_list0 = [[0,3,4,5]]s
     # use_residual_list0 = [False]
 
     # not_causal_list = [[1,],[0,], [0, 1]]
