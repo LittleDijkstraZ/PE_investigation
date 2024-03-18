@@ -151,7 +151,7 @@ if __name__ == "__main__":
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
 
-    choice = "add3"
+    choice = "oddc"
 
     for seed in seeds:
     # for use_pe in ['nope', 'original']: # 'original''nope', 

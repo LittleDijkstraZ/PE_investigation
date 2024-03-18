@@ -1,8 +1,8 @@
-transformers
-wandb
+transformers==4.31.0
+wandb==0.15.12
 pandas
 matplotlib
 plotly
 datasets
-tiktoken
+tiktoken==0.5.1
 tqdm
