@@ -52,6 +52,8 @@ warmup_iters = 100 # not super necessary potentially
 
 device='cuda:0'
 
+# causal_training=False
+
 # on macbook also add
 # device = 'cpu'  # run on cpu only
 # compile = False # do not torch compile the model

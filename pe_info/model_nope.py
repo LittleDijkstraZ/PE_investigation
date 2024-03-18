@@ -384,7 +384,7 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None, debug=False):
+    def forward(self, idx, targets=None, debug=False, causal_training=True):
         
 
         # forward the GPT model itselfs
@@ -430,7 +430,10 @@ class GPT(nn.Module):
 
         if targets is not None:
             # if we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
+            if causal_training:
+                logits = self.lm_head(x)
+            else:
+                logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim\
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         else:
             # print('check what is used to predict', x.shape) 

@@ -135,6 +135,10 @@ layerwise_pe = False
 permute = False
 not_causal = False
 
+causal_training=True
+non_causal_fix_length = 14+1 # for oddc
+
+
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str, type(None)))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -252,6 +256,7 @@ else:
         start_train = f"FILE:{train_data_path}"
         
     if train_both:
+        print('training both')
         # This is for the case where we use two different datasets for training
         # we sample from both with a specified ratio - data_ratio
         # TODO: let's leave this here for now.
@@ -264,8 +269,10 @@ else:
         text_data_str = generate_data_str(text_data_list, operator='text', format=data_format, train=False, shuffle=False)
         eval_text_data = data_encoder(text_data_str)
 
+space_token = data_encoder(' ')[0]
+switch_line_token = data_encoder('\n')[0]
 
-def get_batch(split, is_causal=True):
+def get_batch(split):
     data = train_data if split == 'train' else val_data
     if train_both:
         data2 = train_data2 if split == 'train' else val_data2
@@ -273,10 +280,29 @@ def get_batch(split, is_causal=True):
         ix = torch.randint(len(data) - block_size, (batch_size-batch_size2,))
         ix2 = torch.randint(len(data2) - block_size, (batch_size2,))
     else:
-        ix = torch.randint(len(data) - block_size, (batch_size,))
-    
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+        if causal_training:
+            ix = torch.randint(len(data) - block_size, (batch_size,))
+        else:
+            split_points = np.where(data==(switch_line_token))[0]
+            split_points = np.hstack([np.array([0]), split_points.flatten()])
+
+            diff_split_points = np.diff(split_points)
+            start_points = split_points[:-1]
+
+            randidx = np.random.permutation(len(start_points))[:batch_size]
+            ix = start_points[randidx]
+            diff_split_points = diff_split_points[randidx]
+
+    if causal_training:
+        x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+        y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    else:
+        x = torch.stack([torch.from_numpy(np.pad(data[ix[i]:ix[i]+diff_split_points[i]-1].astype(np.int64), 
+                                        (non_causal_fix_length-diff_split_points[i], 0),  # this pads space at front
+                                        mode='constant', 
+                                        constant_values=space_token)) for i in range(len(ix))])
+        y = torch.stack([torch.from_numpy((data[ix[i]+diff_split_points[i]-1:ix[i]+1+diff_split_points[i]-1]).astype(np.int64)) for i in range(len(ix))])
+
     if train_both:
         x2 = torch.stack([torch.from_numpy((data2[i:i+block_size]).astype(np.int64)) for i in ix2])
         y2 = torch.stack([torch.from_numpy((data2[i+1:i+1+block_size]).astype(np.int64)) for i in ix2])
@@ -458,7 +484,7 @@ def estimate_loss():  # this function sometimes get things wrong
         for k in range(eval_iters):
             X, Y = get_batch(split)
             with ctx:
-                logits, loss = model(X, Y)
+                logits, loss = model(X, Y, causal_training=causal_training)
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
@@ -529,7 +555,7 @@ while True:
                 for k in range(eval_iters):
                     X, Y = get_batch(split)
                     with ctx:
-                        logits, loss = model(X, Y)
+                        logits, loss = model(X, Y, causal_training=causal_training)
                     all_loss[k] = loss.item()
                 losses[split] = all_loss.mean().detach().cpu().numpy()
         model.train()
@@ -654,7 +680,7 @@ while True:
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
         with ctx:
-            logits, loss = model(X, Y)
+            logits, loss = model(X, Y, causal_training=causal_training)
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
         # backward pass, with gradient scaling if training in fp16

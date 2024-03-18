@@ -333,7 +333,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
     elif operation == 'parity':
         c = a.count('1') % 2
     elif operation == 'sumd':
-        c = sum([int(i) for i in a])
+        c = sum([int(i) for i in a]) % 10
     elif operation == 'oddc':
         c = sum([int(d)%2 for d in a])
     
@@ -708,17 +708,17 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'correct: {op}({a})={c}')
 
                     elif op in ['parity', 'sumd', 'oddc']:
-                        if type(c)!= str and c==c_hat2:
+                        if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
                             if verbose_correct:
                                 print('outputs(o): ', outcome)
-                                print(f'correct: parity({a})={c}')
+                                print(f'correct: {op}({a})={c}')
                         else:
                             if verbose:
                                 print('outputs(x): ', outcome)
-                                print(f'wrong  : parity({a})={c_hat2}')
-                                print(f'correct: parity({a})={c}')
+                                print(f'wrong  : {op}({a})={c_hat2}')
+                                print(f'correct: {op}({a})={c}')
 
                     carry_dictionary[f'carry{num_carry}_total']+=1
 
