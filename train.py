@@ -727,3 +727,6 @@ if __name__ == "__main__":
 
     if ddp:
         destroy_process_group()
+        
+    wandb.finish()
+    
