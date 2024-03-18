@@ -1,6 +1,7 @@
 # Define the parameters in a dictionary
 import os
 import glob
+from click import command
 import pandas as pd
 from functools import partial
 
@@ -101,8 +102,8 @@ def run_training(out_name,
     # command = "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py "
     # command = "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py "
     # command = "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py "
-    command = "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
-        
+    # command = "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
+    command = kwargs['command']
         
 
     for key, value in command_params.items():
