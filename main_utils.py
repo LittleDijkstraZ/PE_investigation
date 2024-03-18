@@ -1169,7 +1169,7 @@ def get_data_list(filename=None, operator='+', delim=None):
 
                 elif operator == 'sumd':
                     x = random.randint(0, 999999+1)
-                    y = sum([int(digit) for digit in str(x)])
+                    y = sum([int(digit) for digit in str(x)]) % 10
                     data_list.append((int(x), int(y), operator))
 
                 elif operator == 'oddc':
