@@ -53,7 +53,7 @@ def run_training(out_name,
     # wandb_run_name = f"parity_sd{params['general_seed']}{params['message']}"
     # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"
     choice = kwargs['choice']
-    wandb_run_name = f"oddc_sd{params['general_seed']}{params['message']}"
+    wandb_run_name = f"{choice}_sd{params['general_seed']}{params['message']}"
         
         
 
@@ -100,6 +100,8 @@ def run_training(out_name,
     if 'batch_size' in kwargs:
         command_params['batch_size'] = kwargs['batch_size']
 
+    command_params['save_final']=False
+
     # command = "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py "
     # command = "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py "
     # command = "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py "
@@ -143,7 +145,7 @@ if __name__ == "__main__":
     # use_residual_list4 = [[i for i in range(6)]]
 
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0,3)]
+    seeds = [240+i for i in range(0,10)]
 
     commands_dict = {
         "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
@@ -152,7 +154,7 @@ if __name__ == "__main__":
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
 
-    choice = "add3"
+    choice = "oddc"
 
     for seed in seeds:
     # for use_pe in ['nope', 'original']: # 'original''nope', 
@@ -186,7 +188,7 @@ if __name__ == "__main__":
                 out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
                 os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
 
-                pool = Pool(2)
+                # pool = Pool(1)
                 func = partial(run_training, out_name)
                 args = [{
                     'not_causal': not_causal_list[i],
@@ -204,7 +206,9 @@ if __name__ == "__main__":
                     # 'use_flesh': True,
                     # 'layerwise_pe_list': layerwise_pe_list[i],
                 } for i in range(len(use_residual_list))]
-                # for arg in args:
-                    # func(arg)
-                pool.map(func, args)
-                pool.close()
+                import time
+                for arg in args:
+                    func(arg)
+                    time.sleep(2)
+                # pool.map(func, args)
+                # pool.close()

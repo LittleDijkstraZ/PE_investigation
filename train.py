@@ -137,6 +137,7 @@ not_causal = False
 
 causal_training=True
 non_causal_fix_length = 14+1 # for oddc
+save_best_loss = False
 
 if __name__ == "__main__":
     # -----------------------------------------------------------------------------
@@ -645,9 +646,10 @@ if __name__ == "__main__":
             if losses['val'] < best_val_loss or always_save_checkpoint:
                 best_val_loss = losses['val']
                 checkpoint['best_val_loss'] = best_val_loss
-                if iter_num > 0:
-                    print(f"saving checkpoint to {out_dir}/{ckpt_path_name}")
-                    torch.save(checkpoint, os.path.join(out_dir, ckpt_path_name))
+                if save_best_loss:
+                    if iter_num > 0:
+                        print(f"saving checkpoint to {out_dir}/{ckpt_path_name}")
+                        torch.save(checkpoint, os.path.join(out_dir, ckpt_path_name))
             if eval_text and ppl < best_perplexity:
                 best_perplexity = ppl
                 checkpoint['best_perplexity'] = best_perplexity
