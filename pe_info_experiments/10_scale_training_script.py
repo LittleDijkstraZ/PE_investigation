@@ -99,6 +99,8 @@ def run_training(out_name,
         command_params['no_mlp_residual'] = kwargs['no_mlp_residual']
     if 'batch_size' in kwargs:
         command_params['batch_size'] = kwargs['batch_size']
+    if 'causal_training' in kwargs:
+        command_params['causal_training'] = kwargs['causal_training']
 
     # command = "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py "
     # command = "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py "
@@ -140,25 +142,29 @@ if __name__ == "__main__":
 
     # use_residual_list2 = [[i for i in range(6) if i not in [j, j+2]] for j in range(4)]
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
-    # use_residual_list4 = [[i for i in range(6)]]
+    use_residual_list4 = [[i for i in range(6)]]
 
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0,3)]
+    seeds = [240+i for i in range(0,1)]
 
     commands_dict = {
         "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
-    # command = "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py "
+        "parity": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
         "sumd": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
 
-    choice = "oddc"
+    choice = "parity"
+    causal_training = False
 
+    
     for seed in seeds:
     # for use_pe in ['nope', 'original']: # 'original''nope', 
 
         # for use_residual_list in [use_residual_list2, use_residual_list3]: # use_residual_list1, use_residual_list2, 
-        for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
+        # for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
+        for use_residual_list in [use_residual_list4]: # use_residual_list1, use_residual_list2, 
+            
 
 
             # no_att_residual_list = [True]
@@ -186,7 +192,7 @@ if __name__ == "__main__":
                 out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
                 os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
 
-                pool = Pool(2)
+                pool = Pool(1)
                 func = partial(run_training, out_name)
                 args = [{
                     'not_causal': not_causal_list[i],
@@ -196,6 +202,11 @@ if __name__ == "__main__":
                     'general_seed': seed,
                     'command': commands_dict[choice],
                     'choice': choice,
+
+                    'causal_training': causal_training,
+                    'batch_size': 2048 if not causal_training else 256,
+                    'max_iters': 2000 if not causal_training else 5000,
+
                     # 'no_att_residual': no_att_residual_list[i],
                     # 'no_mlp_residual': no_mlp_residual_list[i],
                     # 'batch_size': bs[i],
@@ -208,3 +219,4 @@ if __name__ == "__main__":
                     # func(arg)
                 pool.map(func, args)
                 pool.close()
+                exit()

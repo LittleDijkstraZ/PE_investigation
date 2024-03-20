@@ -534,6 +534,8 @@ def evaluate_addition_new(config, model, ctx, encode, decode, verbose=False, num
 def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, num_digit=3, zero_pad=False, reverse_ab=False, reverse_c=False,
                             algo_reason=False, binary=False, fewshot=False, data_type='binary', operator='+', data_format='plain', verbose_correct=False, analyze=False):
     model.eval()
+    causal_training = config['causal_training']
+
     start = config['start'] if 'start' in config.keys() else "FILE:prompt/prompt_addition_pad_test_0.01.txt"
     device = config['device']
     test_batch_size = config['test_batch_size'] if 'test_batch_size' in config.keys() else 128
@@ -638,7 +640,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
         # run generation
         with torch.no_grad():
             with ctx:
-                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, causal=causal_training)
                 outcome_list = [decode(y_i.tolist()) for y_i in y]
                 for i, outcome in enumerate(outcome_list):
                     _, len_x, line_start, a, b, c, a_d, b_d, num_carry = batch[i]
@@ -646,15 +648,18 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                     #     print(c_hat)
                     # c_hat = c_hat.split('+')[-1].split('=')[-1]
                     c_hat = outcome[len_x:]
+                    if not causal_training:
+                        c_hat = c_hat[0] # should be only 1 generated token anyway
+                    else: # for causal training
 
-                    # consider the case where c_hat contains non-digit number ('+','=','\n')
-                    
-                    if '$' == line_start: # handle $ prompt $
-                        c_hat = c_hat.split('$')[0]
-                    else:
-                        if '\n' == c_hat[-1]: # handle cases where it ends with '\n'
-                            c_hat = c_hat[:-1]
-                    
+                        # consider the case where c_hat contains non-digit number ('+','=','\n')
+                        
+                        if '$' == line_start: # handle $ prompt $
+                            c_hat = c_hat.split('$')[0]
+                        else:
+                            if '\n' == c_hat[-1]: # handle cases where it ends with '\n'
+                                c_hat = c_hat[:-1]
+                        
                     c_hat2 = c_hat
                     if zero_pad:
                         c_hat2 = remove_zero_pad(c_hat)
@@ -818,7 +823,7 @@ def evaluate_addition_multidigit(config, model, ctx, encode, decode, verbose=Fal
                     #     print(c_hat)
                     # c_hat = c_hat.split('+')[-1].split('=')[-1]
                     c_hat = outcome[len_x:]
-
+        
                     # consider the case where c_hat contains non-digit number ('+','=','\n')
 
                     if '$' == line[0]: # handle $ prompt $
@@ -833,7 +838,7 @@ def evaluate_addition_multidigit(config, model, ctx, encode, decode, verbose=Fal
                     
                     if reverse_c:
                         c_hat2 = reverse_string(c_hat2)
-                    
+                
                     if algo_reason:
                         if '</scratch>\n' in c_hat: 
                             c_hat2 = c_hat.split('</scratch>\n')[1].split('\n')[0]
@@ -1125,7 +1130,9 @@ def get_data_list(filename=None, operator='+', delim=None):
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
-                    data_list.append((int(x), int(y), operator))
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+                    
 
     else: # generate random data
         if operator in ['text']:
@@ -1164,18 +1171,26 @@ def get_data_list(filename=None, operator='+', delim=None):
 
                 elif operator == 'parity':
                     x = random.randint(0, 2**12-1)
-                    y = bin(x)[2:].count('1') % 2
-                    data_list.append((int(x), int(y), operator))
+                    x = bin(x)[2:].zfill(12)
+                    y = x.count('1') % 2
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
 
                 elif operator == 'sumd':
                     x = random.randint(0, 999999+1)
+                    x = str(x).zfill(6)
                     y = sum([int(digit) for digit in str(x)]) % 10
-                    data_list.append((int(x), int(y), operator))
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
 
                 elif operator == 'oddc':
                     x = random.randint(0, 999999+1)
+                    x = str(x).zfill(6)
                     y = sum([int(digit)%2 for digit in str(x)]) 
-                    data_list.append((int(x), int(y), operator))
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
 
     return data_list
 
