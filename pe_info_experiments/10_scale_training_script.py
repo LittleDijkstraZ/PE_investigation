@@ -51,12 +51,8 @@ def run_training(out_name,
     # Construct the output directory and other variables
     # wandb_run_name = f"addition_reverse_sd{params['general_seed']}{params['message']}"
     # wandb_run_name = f"parity_sd{params['general_seed']}{params['message']}"
-<<<<<<< HEAD
     # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"\
 
-=======
-    # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"
->>>>>>> 1b45bfd57c385f3168d74e622cd348ab2ee7e46d
     choice = kwargs['choice']
     wandb_run_name = f"oddc_sd{params['general_seed']}{params['message']}"
         
@@ -159,12 +155,8 @@ if __name__ == "__main__":
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
 
-<<<<<<< HEAD
     choice = "parity"
     causal_training = False
-=======
-    choice = "add3"
->>>>>>> cfb8ebbe5996cc6b3b6feed0ded41d827ef4d73e
 
     
     for seed in seeds:
@@ -210,15 +202,13 @@ if __name__ == "__main__":
                     'use_pe': use_pe,
                     'general_seed': seed,
                     'choice': choice,
-<<<<<<< HEAD
 
                     'causal_training': causal_training,
                     'batch_size': 2048 if not causal_training else 256,
                     'max_iters': 2000 if not causal_training else 5000,
 
-=======
-                    'command': commands_dict[choice],
->>>>>>> cfb8ebbe5996cc6b3b6feed0ded41d827ef4d73e
+                    'command': commands_dict[choice],  
+
                     # 'no_att_residual': no_att_residual_list[i],
                     # 'no_mlp_residual': no_mlp_residual_list[i],
                     # 'batch_size': bs[i],
