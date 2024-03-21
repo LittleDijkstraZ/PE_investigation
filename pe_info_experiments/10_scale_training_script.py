@@ -51,12 +51,7 @@ def run_training(out_name,
     # Construct the output directory and other variables
     # wandb_run_name = f"addition_reverse_sd{params['general_seed']}{params['message']}"
     # wandb_run_name = f"parity_sd{params['general_seed']}{params['message']}"
-<<<<<<< HEAD
-    # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"\
-
-=======
     # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"
->>>>>>> 1b45bfd57c385f3168d74e622cd348ab2ee7e46d
     choice = kwargs['choice']
     wandb_run_name = f"oddc_sd{params['general_seed']}{params['message']}"
         

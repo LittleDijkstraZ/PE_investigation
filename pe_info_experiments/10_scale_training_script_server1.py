@@ -141,8 +141,8 @@ if __name__ == "__main__":
     use_residual_list2 = [[i for i in range(6) if i not in [j, j+1]] for j in range(5)]
 
     # use_residual_list2 = [[i for i in range(6) if i not in [j, j+2]] for j in range(4)]
-    # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
-    # use_residual_list4 = [[i for i in range(6)]]
+    use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
+    use_residual_list4 = [[i for i in range(6)]]
 
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
     seeds = [240+i for i in range(0,10)]
@@ -160,7 +160,8 @@ if __name__ == "__main__":
     # for use_pe in ['nope', 'original']: # 'original''nope', 
 
         # for use_residual_list in [use_residual_list2, use_residual_list3]: # use_residual_list1, use_residual_list2, 
-        for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
+        # for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
+        for use_residual_list in [use_residual_list3, use_residual_list4]: # use_residual_list1, use_residual_list2, 
 
 
             # no_att_residual_list = [True]
