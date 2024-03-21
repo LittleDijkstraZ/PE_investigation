@@ -12,9 +12,9 @@ def run_training(out_name,
 
     # pe_type='original'
     params = {
-        'max_iters': 5000, 
+        'max_iters': kwargs['max_iters'] if 'max_iters' in kwargs else 5000, # 10000
         # 'max_iters': 10000, # increase to see if hard-to-converge cases can converge
-        'lr_decay_iters': 5000, # keep the original training schedule
+        'lr_decay_iters':  kwargs['max_iters'] if 'max_iters' in kwargs else 5000, # keep the original training schedule
         'general_seed': kwargs['general_seed'] if 'general_seed' in kwargs else 888,
         'out_dir': 'outputs',
         'pe_type': kwargs['use_pe'],  # or 'sin'
@@ -33,8 +33,12 @@ def run_training(out_name,
         # 'learning_rate': 0.001, # original setting
         # 'warmup_iters': 200,
 
-        'learning_rate': 0.00026441, # 0126 try to preven rank degen
-        'warmup_iters': 400,
+        # 'learning_rate': 0.00026441, # 0126 try to preven rank degen
+        # 'warmup_iters': 400,
+
+        ### for non causal task
+        'learning_rate': 0.000026441, # 0126 try to preven rank degen
+        'warmup_iters': 200,
 
         'use_residual': kwargs['use_residual'],
         # 'layerwise_pe': kwargs['layerwise_pe'],
@@ -171,7 +175,7 @@ if __name__ == "__main__":
             # no_att_residual_list = [True]
             # no_mlp_residual_list = [True]
 
-            not_causal_list = [False] * len(use_residual_list)
+            not_causal_list = [True] * len(use_residual_list)
             # not_causal_list = [False]
             # bs = [512]
 
@@ -221,4 +225,3 @@ if __name__ == "__main__":
                     # func(arg)
                 pool.map(func, args)
                 pool.close()
-                exit()

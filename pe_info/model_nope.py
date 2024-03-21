@@ -433,7 +433,7 @@ class GPT(nn.Module):
             if causal_training:
                 logits = self.lm_head(x)
             else:
-                logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim\
+                logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         else:
             # print('check what is used to predict', x.shape) 
@@ -602,6 +602,9 @@ class GPT(nn.Module):
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
+        if not causal:
+            top_k = 1
+            
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]

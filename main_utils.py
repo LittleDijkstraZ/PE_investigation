@@ -611,6 +611,9 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
     for line_idx in line_idxs:
         line = lines[line_idx]
         line.strip('\n')
+        if operator in ['oddc', 'parity', 'sumd']:
+            line = '\n' + line # terribly sorry for this
+
         start_ids = encode(line)
         x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
         len_x = len(x[0])
@@ -640,7 +643,12 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
         # run generation
         with torch.no_grad():
             with ctx:
+                max_new_tokens = 1 if not causal_training else max_new_tokens
+                top_k = 1 if not causal_training else top_k
+                temperature = 1 if not causal_training else temperature
                 y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k, causal=causal_training)
+
+
                 outcome_list = [decode(y_i.tolist()) for y_i in y]
                 for i, outcome in enumerate(outcome_list):
                     _, len_x, line_start, a, b, c, a_d, b_d, num_carry = batch[i]
@@ -686,6 +694,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                             c_hat2 = int(c_hat2)
                     else: # c_hat2 is not a number
                         c = str(c)
+
 
                     if op in ['+','-','*']:
                         if c == c_hat2:
