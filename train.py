@@ -136,7 +136,7 @@ permute = False
 not_causal = False
 
 causal_training=True
-non_causal_fix_length = 14+1 # for oddc
+non_causal_fix_length = None
 save_best_loss = False
 
 if __name__ == "__main__":

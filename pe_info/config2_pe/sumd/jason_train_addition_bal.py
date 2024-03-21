@@ -27,11 +27,12 @@ data_type='text'
 data_format='plain'
 operator = 'sumd'
 dataset = 'sumd'
-batch_size = 256
+# batch_size = 256
+batch_size = 2048 # much larger batch size
 block_size = 256 # context of up to 256 previous characters
 train_data_path = 'train_sumd_10000.txt'
 # val_data_path = 'val.bin'
-ckpt_path_name = 'ckpt_2000.pt'
+ckpt_path_name = 'ckpt_10000.pt'
 eval_addition = True
 start = "FILE:data/sumd/test_sumd_10000.txt"
 eval_addition_train = True
@@ -51,6 +52,8 @@ beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
 warmup_iters = 100 # not super necessary potentially
 
 device='cuda:0'
+# causal_training=False # we can train it non-causally as well
+non_causal_fix_length = 15 # for 6-digit sumd
 
 # on macbook also add
 # device = 'cpu'  # run on cpu only
