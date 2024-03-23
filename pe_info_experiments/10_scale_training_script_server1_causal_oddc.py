@@ -12,9 +12,9 @@ def run_training(out_name,
 
     # pe_type='original'
     params = {
-        'max_iters': kwargs['max_iters'] if 'max_iters' in kwargs else 5000, # 10000
+        'max_iters': 5000, 
         # 'max_iters': 10000, # increase to see if hard-to-converge cases can converge
-        'lr_decay_iters':  kwargs['max_iters'] if 'max_iters' in kwargs else 5000, # keep the original training schedule
+        'lr_decay_iters': 5000, # keep the original training schedule
         'general_seed': kwargs['general_seed'] if 'general_seed' in kwargs else 888,
         'out_dir': 'outputs',
         'pe_type': kwargs['use_pe'],  # or 'sin'
@@ -33,12 +33,8 @@ def run_training(out_name,
         # 'learning_rate': 0.001, # original setting
         # 'warmup_iters': 200,
 
-        # 'learning_rate': 0.00026441, # 0126 try to preven rank degen
-        # 'warmup_iters': 400,
-
-        ### for non causal task
-        'learning_rate': 0.000026441, # 0126 try to preven rank degen
-        'warmup_iters': 200,
+        'learning_rate': 0.00026441, # 0126 try to preven rank degen
+        'warmup_iters': 400,
 
         'use_residual': kwargs['use_residual'],
         # 'layerwise_pe': kwargs['layerwise_pe'],
@@ -55,10 +51,9 @@ def run_training(out_name,
     # Construct the output directory and other variables
     # wandb_run_name = f"addition_reverse_sd{params['general_seed']}{params['message']}"
     # wandb_run_name = f"parity_sd{params['general_seed']}{params['message']}"
-    # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"\
-
+    # wandb_run_name = f"sumd_sd{params['general_seed']}{params['message']}"
     choice = kwargs['choice']
-    wandb_run_name = f"oddc_sd{params['general_seed']}{params['message']}"
+    wandb_run_name = f"{choice}_sd{params['general_seed']}{params['message']}"
         
         
 
@@ -104,8 +99,8 @@ def run_training(out_name,
         command_params['no_mlp_residual'] = kwargs['no_mlp_residual']
     if 'batch_size' in kwargs:
         command_params['batch_size'] = kwargs['batch_size']
-    if 'causal_training' in kwargs:
-        command_params['causal_training'] = kwargs['causal_training']
+
+    command_params['save_final']=False
 
     # command = "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py "
     # command = "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py "
@@ -146,31 +141,29 @@ if __name__ == "__main__":
     use_residual_list2 = [[i for i in range(6) if i not in [j, j+1]] for j in range(5)]
 
     # use_residual_list2 = [[i for i in range(6) if i not in [j, j+2]] for j in range(4)]
-    # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
-    # use_residual_list4 = [[i for i in range(6)]]
-    # use_residual_list4 = [[1,2]]
+    use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
+    use_residual_list4 = [[i for i in range(6)]]
 
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0,1)]
+    seeds = [240+i for i in range(0,10)]
 
     commands_dict = {
         "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
-        "parity": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
+    # command = "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py "
         "sumd": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
 
-    choice = "parity"
-    causal_training = False
+    choice = "oddc"
 
-    
     for seed in seeds:
     # for use_pe in ['nope', 'original']: # 'original''nope', 
 
         # for use_residual_list in [use_residual_list2, use_residual_list3]: # use_residual_list1, use_residual_list2, 
         # for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
-        for use_residual_list in [use_residual_list4]: # use_residual_list1, use_residual_list2, 
-            
+        for use_residual_list in [use_residual_list3, use_residual_list4]: # use_residual_list1, use_residual_list2, 
+        # for use_residual_list in [use_residual_list1, use_residual_list2, use_residual_list3, use_residual_list4]: # use_residual_list1, use_residual_list2, 
+
 
 
             # no_att_residual_list = [True]
@@ -198,7 +191,7 @@ if __name__ == "__main__":
                 out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
                 os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
 
-                pool = Pool(1)
+                # pool = Pool(1)
                 func = partial(run_training, out_name)
                 args = [{
                     'not_causal': not_causal_list[i],
@@ -207,13 +200,7 @@ if __name__ == "__main__":
                     'use_pe': use_pe,
                     'general_seed': seed,
                     'choice': choice,
-
-                    'causal_training': causal_training,
-                    'batch_size': 2048 if not causal_training else 256,
-                    'max_iters': 2000 if not causal_training else 5000,
-
-                    'command': commands_dict[choice],  
-
+                    'command': commands_dict[choice],
                     # 'no_att_residual': no_att_residual_list[i],
                     # 'no_mlp_residual': no_mlp_residual_list[i],
                     # 'batch_size': bs[i],
@@ -222,7 +209,9 @@ if __name__ == "__main__":
                     # 'use_flesh': True,
                     # 'layerwise_pe_list': layerwise_pe_list[i],
                 } for i in range(len(use_residual_list))]
-                # for arg in args:
-                    # func(arg)
-                pool.map(func, args)
-                pool.close()
+                import time
+                for arg in args:
+                    func(arg)
+                    time.sleep(2)
+                # pool.map(func, args)
+                # pool.close()
