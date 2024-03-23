@@ -613,7 +613,6 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
         line.strip('\n')
         if operator in ['oddc', 'parity', 'sumd']:
             line = '\n' + line # terribly sorry for this
-
         start_ids = encode(line)
         x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
         len_x = len(x[0])
@@ -1187,8 +1186,8 @@ def get_data_list(filename=None, operator='+', delim=None):
 
 
                 elif operator == 'sumd':
-                    x = random.randint(0, 999999+1)
-                    x = str(x).zfill(6)
+                    x = random.randint(0, 99999+1)
+                    x = str(x).zfill(5)
                     y = sum([int(digit) for digit in str(x)]) % 10
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
