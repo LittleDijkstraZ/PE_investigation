@@ -5,3 +5,4 @@ wandb/*
 
 *.svg
 *.png
+*.pyc

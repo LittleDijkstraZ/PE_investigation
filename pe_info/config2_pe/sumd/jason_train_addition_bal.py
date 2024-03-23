@@ -53,7 +53,7 @@ warmup_iters = 100 # not super necessary potentially
 
 device='cuda:0'
 # causal_training=False # we can train it non-causally as well
-non_causal_fix_length = 15 # for 6-digit sumd
+non_causal_fix_length = 14 # for 5-digit sumd
 
 # on macbook also add
 # device = 'cpu'  # run on cpu only
