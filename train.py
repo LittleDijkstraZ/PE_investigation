@@ -137,7 +137,8 @@ not_causal = False
 
 causal_training=True
 non_causal_fix_length = None
-save_best_loss = False
+save_best_loss = True
+autoregressive_training=False
 
 if __name__ == "__main__":
     # -----------------------------------------------------------------------------
@@ -272,8 +273,57 @@ if __name__ == "__main__":
 
     space_token = data_encoder(' ')[0]
     switch_line_token = data_encoder('\n')[0]
+    equal_token = data_encoder('=')[0]
+    dollar_token = data_encoder('$')[0]
+
+    # def get_batch(split):
+    #     data = train_data if split == 'train' else val_data
+    #     if train_both:
+    #         data2 = train_data2 if split == 'train' else val_data2
+    #         batch_size2 = int(batch_size*data_ratio)
+    #         start_points = torch.randint(len(data) - block_size, (batch_size-batch_size2,))
+    #         start_points2 = torch.randint(len(data2) - block_size, (batch_size2,))
+    #     else:
+    #         if causal_training:
+    #             start_points = torch.randint(len(data) - block_size, (batch_size,))
+    #         else:
+    #             split_points = np.where(data==(switch_line_token))[0]
+    #             split_points = np.hstack([np.array([0]), split_points.flatten()])
+
+    #             sample_length_list = np.diff(split_points)
+    #             start_points = split_points[:-1]
+
+    #             randidx = np.random.permutation(len(start_points))[:batch_size]
+    #             start_points = start_points[randidx]
+    #             sample_length_list = sample_length_list[randidx]
+
+    #     if causal_training:
+    #         x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in start_points])
+    #         y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in start_points])
+    #     else:
+    #         x = torch.stack([torch.from_numpy(np.pad(data[start_points[i]:start_points[i]+sample_length_list[i]-1].astype(np.int64), 
+    #                                         (non_causal_fstart_points_length-sample_length_list[i], 0),  # this pads space at front
+    #                                         mode='constant', 
+    #                                         constant_values=space_token)) for i in range(len(start_points))])
+    #         y = torch.stack([torch.from_numpy((data[start_points[i]+sample_length_list[i]-1:start_points[i]+1+sample_length_list[i]-1]).astype(np.int64)) for i in range(len(start_points))])
+
+    #     if train_both:
+    #         x2 = torch.stack([torch.from_numpy((data2[i:i+block_size]).astype(np.int64)) for i in start_points2])
+    #         y2 = torch.stack([torch.from_numpy((data2[i+1:i+1+block_size]).astype(np.int64)) for i in start_points2])
+    #         x = torch.cat([x,x2])
+    #         y = torch.cat([y,y2])    
+
+    #     if device_type == 'cuda':
+    #         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+    #         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    #     else:
+    #         x, y = x.to(device), y.to(device)
+    #     return x, y
+
 
     def get_batch(split):
+        attn_mask = None
+        w = None
         data = train_data if split == 'train' else val_data
         if train_both:
             data2 = train_data2 if split == 'train' else val_data2
@@ -285,24 +335,60 @@ if __name__ == "__main__":
                 ix = torch.randint(len(data) - block_size, (batch_size,))
             else:
                 split_points = np.where(data==(switch_line_token))[0]
+                answer_split_points = np.where(data==(equal_token))[0]
+                answer_length_list = split_points - answer_split_points - 1
+                split_points = split_points + 1 # i should have had this
                 split_points = np.hstack([np.array([0]), split_points.flatten()])
 
-                diff_split_points = np.diff(split_points)
+                sample_length_list = np.diff(split_points)
                 start_points = split_points[:-1]
 
                 randidx = np.random.permutation(len(start_points))[:batch_size]
                 ix = start_points[randidx]
-                diff_split_points = diff_split_points[randidx]
+                sample_length_list = sample_length_list[randidx]
+                answer_length_list = answer_length_list[randidx]
 
         if causal_training:
             x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
             y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
         else:
-            x = torch.stack([torch.from_numpy(np.pad(data[ix[i]:ix[i]+diff_split_points[i]-1].astype(np.int64), 
-                                            (non_causal_fix_length-diff_split_points[i], 0),  # this pads space at front
-                                            mode='constant', 
-                                            constant_values=space_token)) for i in range(len(ix))])
-            y = torch.stack([torch.from_numpy((data[ix[i]+diff_split_points[i]-1:ix[i]+1+diff_split_points[i]-1]).astype(np.int64)) for i in range(len(ix))])
+            remove_dollar_count = 1 if dollar_token in data else 0
+            if not autoregressive_training:
+                cur_answer_length_list = np.random.randint(1+remove_dollar_count, answer_length_list+1) + 1
+            else:
+                cur_answer_length_list = answer_length_list + 1 + 4
+            x = [data[ix[i]:ix[i]+sample_length_list[i]-cur_answer_length_list[i]].astype(np.int64) for i in range(len(ix))]
+            x_len = [len(x[i]) for i in range(len(x))]
+            pad_to_length = max(x_len)
+            min_length = min(x_len)
+            # only do padding when the length is not equal
+            if pad_to_length > min_length: 
+                x = np.vstack([np.pad(x[i], (pad_to_length-len(x[i]), 0), mode='constant', constant_values=space_token) for i in range(len(x))])
+                attn_mask = np.ones_like(x)
+                # mask out the paddings
+                attn_mask[x==space_token] = 0
+                attn_mask = attn_mask[..., None]
+                attn_mask = attn_mask @ attn_mask.transpose(0, 2, 1)
+                attn_mask = attn_mask.astype(bool)
+                if (attn_mask==1).all():
+                    attn_mask = None
+                else:
+                    attn_mask = torch.from_numpy(attn_mask)
+            else:
+                x = np.vstack(x)
+                attn_mask = None
+            
+            x = torch.from_numpy(x)
+            # predict the next digit
+            if not autoregressive_training:
+                y = torch.stack([torch.from_numpy((data[ix[i]+sample_length_list[i]-cur_answer_length_list[i]:ix[i]+1+sample_length_list[i]-cur_answer_length_list[i]]).astype(np.int64)) for i in range(len(ix))])
+            else:
+                y = [torch.from_numpy((data[ix[i]+sample_length_list[i]-cur_answer_length_list[i]:ix[i]-1+sample_length_list[i]]).astype(np.int64)) for i in range(len(ix))]
+                max_len_y = max([len(y[i]) for i in range(len(y))])
+                y = np.vstack([np.pad(y[i], (0, max_len_y-len(y[i])), mode='constant', constant_values=space_token) for i in range(len(y))])
+                y = torch.from_numpy(y)
+                w = torch.ones_like(y)
+                w[y==space_token] = 0
 
         if train_both:
             x2 = torch.stack([torch.from_numpy((data2[i:i+block_size]).astype(np.int64)) for i in ix2])
@@ -313,9 +399,19 @@ if __name__ == "__main__":
         if device_type == 'cuda':
             # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
             x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+            if autoregressive_training:
+                w = w.pin_memory().to(device, non_blocking=True)    
+            if attn_mask is not None:
+                attn_mask = attn_mask.pin_memory().to(device, non_blocking=True)
         else:
             x, y = x.to(device), y.to(device)
-        return x, y
+            
+            if attn_mask is not None:
+                attn_mask = attn_mask.to(device)
+        
+        # attn_mask = None
+        return x, y, attn_mask, w
+
 
 
     # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
@@ -483,9 +579,12 @@ if __name__ == "__main__":
         for split in ['train', 'val']:
             losses = torch.zeros(eval_iters)
             for k in range(eval_iters):
-                X, Y = get_batch(split)
+                X, Y, M, W = get_batch(split)
                 with ctx:
-                    logits, loss = model(X, Y, causal_training=causal_training)
+                    if not autoregressive_training:
+                        logits, loss = model(X, Y, causal_training=causal_training, attn_mask=M)
+                    else:
+                        logits, loss = model.autoregressive_training(X, Y, W, max_new_tokens=Y.shape[-1], attn_mask=M)
                 losses[k] = loss.item()
             out[split] = losses.mean()
         model.train()
@@ -511,7 +610,7 @@ if __name__ == "__main__":
         wandb.init(project=wandb_project, entity=wandb_entity, name=wandb_run_name, config=config)
 
     # training loop
-    X, Y = get_batch('train') # fetch the very first batch
+    X, Y, M, W = get_batch('train') # fetch the very first batch
     t0 = time.time()
     local_iter_num = 0 # number of iterations in the lifetime of this process
     raw_model = model.module if ddp else model # unwrap DDP container if needed
@@ -554,9 +653,12 @@ if __name__ == "__main__":
                 for split in ['train', 'val']:
                     all_loss = torch.zeros(eval_iters)
                     for k in range(eval_iters):
-                        X, Y = get_batch(split)
+                        X, Y, M, W = get_batch(split)
                         with ctx:
-                            logits, loss = model(X, Y, causal_training=causal_training)
+                            if not autoregressive_training:
+                                logits, loss = model(X, Y, causal_training=causal_training, attn_mask=M)
+                            else:
+                                logits, loss = model.autoregressive_training(X, Y, W, max_new_tokens=Y.shape[-1], attn_mask=M)
                         all_loss[k] = loss.item()
                     losses[split] = all_loss.mean().detach().cpu().numpy()
             model.train()
@@ -682,9 +784,12 @@ if __name__ == "__main__":
                 # looking at the source of that context manager, it just toggles this variable
                 model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
             with ctx:
-                logits, loss = model(X, Y, causal_training=causal_training)
+                if not autoregressive_training:
+                    logits, loss = model(X, Y, causal_training=causal_training, attn_mask=M)
+                else:
+                    logits, loss = model.autoregressive_training(X, Y, W, max_new_tokens=Y.shape[-1], attn_mask=M)
             # immediately async prefetch next batch while model is doing the forward pass on the GPU
-            X, Y = get_batch('train')
+            X, Y, M, W = get_batch('train')
             # backward pass, with gradient scaling if training in fp16
             scaler.scale(loss).backward()
         # clip the gradient

@@ -86,7 +86,7 @@ class CausalSelfAttention(nn.Module):
         self.causal = bool(not config.not_causal)
         # self._reset_parameters() # unfortunately, this does not help with the issue with normal attention
 
-    def forward(self, x):
+    def forward(self, x, attn_mask=None):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
@@ -95,20 +95,35 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
+        if attn_mask is not None:
+            attn_mask = torch.repeat_interleave(attn_mask.unsqueeze(1), self.n_head, dim=1) # (B, nh, T, T)
+
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
             if self.causal:
-                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+                if attn_mask is None:
+                    y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+                else: # since torch doeds not allow setting both attn_mask and is_causal, we have to do it manually
+                    temp_mask = torch.ones(1, 1, T, T, dtype=torch.bool).tril(diagonal=0).to(attn_mask.device)
+                    diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device)
+                    attn_mask = attn_mask & temp_mask
+                    attn_mask = attn_mask | diag_mask
+                    y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout if self.training else 0)
+
             else:
-                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0)
+                if attn_mask is None:
+                    y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0)
+                else:
+                    diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device)
+                    attn_mask = attn_mask | diag_mask
+                    
+                    y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout if self.training else 0)
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            print('attention weights before masking', att.shape)
             if self.causal:
                 att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-            print('attention weights after masking', att.shape)
             
             att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
@@ -229,7 +244,7 @@ class Block(nn.Module):
 
         print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe} | casual {not self.config.not_causal}")
 
-    def forward(self, x):
+    def forward(self, x, attn_mask=None):
         if self.layerwise_pe:
             if self.pe_type == 'original':
                 device = x.device
@@ -243,11 +258,11 @@ class Block(nn.Module):
                 x = self.layer_wpe(x)
         
         if self.no_att_residual:
-            x = self.attn(self.ln_1(x))
+            x = self.attn(self.ln_1(x), attn_mask=attn_mask)
             # x = self.attn(x)
 
         else:
-            x = x + self.attn(self.ln_1(x)) # original
+            x = x + self.attn(self.ln_1(x), attn_mask=attn_mask) # original
             # x = x + self.attn(x)
 
 
@@ -384,7 +399,7 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None, debug=False, causal_training=True):
+    def forward(self, idx, targets=None, debug=False, causal_training=True, attn_mask=None):
         
 
         # forward the GPT model itselfs
@@ -409,7 +424,7 @@ class GPT(nn.Module):
         for bidx, block in enumerate(self.transformer.h):
             if debug:
                 print(bidx, end=' ')
-            x = block(x)
+            x = block(x, attn_mask=attn_mask)
             for tcidx in temp_counter:
                 if temp_counter[tcidx]['skip_count'] >= 0: # bug here (used to be >), now fixed because 
                     temp_counter[tcidx]['skip_count'] -= 1
@@ -419,8 +434,9 @@ class GPT(nn.Module):
                         print(f'[{tcidx}]', end=' ')
             if debug:
                 print()
-
-            skip_count = self.config.use_residual[bidx] - 1
+            # when use residual are false, 0-1=-1 < 0, which will not trigger this. 
+            # Only when it is something larger than 1, will this number determine which layer the current layer will skip to
+            skip_count = self.config.use_residual[bidx] - 1 
             if skip_count > 0:
                 temp_counter[bidx] = {}
                 temp_counter[bidx]['skip_count'] = skip_count
@@ -435,6 +451,8 @@ class GPT(nn.Module):
             else:
                 logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            # print(logits.view(-1, logits.size(-1)).shape, targets.view(-1).shape)
+            # print(logits.view(-1, logits.size(-1)).argmax(-1)[:10], targets.view(-1)[:10])
         else:
             # print('check what is used to predict', x.shape) 
             # inference-time mini-optimization: only forward the lm_head on the very last position
@@ -596,20 +614,18 @@ class GPT(nn.Module):
         return mfu
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, causal=True):
+    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, causal=True, attn_mask=None):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
-        if not causal:
-            top_k = 1
-            
+
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
             # forward the model to get the logits for the index in the sequence
-            logits, _ = self(idx_cond)
+            logits, _ = self(idx_cond, attn_mask=attn_mask)
             # pluck the logits at the final step and scale by desired temperature
             logits = logits[:, -1, :] / temperature
             # optionally crop the logits to only the top k options
@@ -622,8 +638,48 @@ class GPT(nn.Module):
             idx_next = torch.multinomial(probs, num_samples=1)
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
+            
+            # padd true around attn mask
+            if attn_mask is not None:
+                new_mask = torch.ones(attn_mask.shape[0], attn_mask.shape[1]+1, attn_mask.shape[2]+1).bool()
+                new_mask[:, :-1, :-1] = attn_mask
+                attn_mask = new_mask.to(attn_mask.device)
 
-            if not causal: # generate only 1 prediction
-                break
-
+  
         return idx
+    
+    def autoregressive_training(self, idx, targets, answer_mask, max_new_tokens, attn_mask=None):
+        """
+        Performs autoregressive training on the model.
+        """
+        loss = 0.0
+        logits_list = []
+        for _ in range(max_new_tokens):
+            # if the sequence context is growing too long we must crop it at block_size
+            idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
+            # forward the model to get the logits for the index in the sequence
+            logits, _ = self(idx_cond, attn_mask=attn_mask)
+            logits_list.append(logits)
+            logits = logits[:, -1, :]
+            # apply softmax to convert logits to (normalized) probabilities
+
+            probs = F.softmax(logits, dim=-1)
+            # sample from the distribution
+            idx_next = torch.multinomial(probs, num_samples=1)
+            # append sampled index to the running sequence and continue
+            idx = torch.cat((idx, idx_next), dim=1)
+            
+            # padd true around attn mask
+            if attn_mask is not None:
+                new_mask = torch.ones(attn_mask.shape[0], attn_mask.shape[1]+1, attn_mask.shape[2]+1).bool()
+                new_mask[:, :-1, :-1] = attn_mask
+                attn_mask = new_mask.to(attn_mask.device)
+
+        # Calculate loss with the logits and the shifted targets
+        out_logits = torch.cat(logits_list, dim=1)
+        answer_mask = answer_mask.flatten().bool()
+        # loss = F.cross_entropy(out_logits.view(-1, out_logits.size(-1))[:, answer_mask], targets.view(-1)[answer_mask], ignore_index=-1)
+ 
+        loss = F.cross_entropy(out_logits.view(-1, out_logits.size(-1))[answer_mask, ...], targets.view(-1)[answer_mask], ignore_index=-1)
+        
+        return out_logits, loss
