@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
     use_residual_list4 = [[i for i in range(6)]]
     
-    use_residual_list4 = [[4,5]]
+    use_residual_list4 = [[3,4,5]]
     use_residual_list_all = [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
         + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
         + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
@@ -181,10 +181,16 @@ if __name__ == "__main__":
     causal_training = False
     autoregressive_training = False
 
-    batch_size = 2048 if not causal_training else 256
+    batch_size = 4096 if not causal_training else 256
     max_iters = 2000 if not causal_training else 5000
     learning_rate = 0.000026441 if not causal_training else  0.00026441
-    warmup_iters = 200 if not causal_training else 400
+    warmup_iters = 400 if not causal_training else 400
+
+
+    # batch_size = 2048 if not causal_training else 256
+    # max_iters = 2000 if not causal_training else 5000
+    # learning_rate = 0.000026441 if not causal_training else  0.00026441
+    # warmup_iters = 200 if not causal_training else 400
     # batch_size = 256
     # max_iters = 5000 
     # learning_rate = 0.0001
