@@ -156,105 +156,118 @@ if __name__ == "__main__":
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
     use_residual_list4 = [[i for i in range(6)]]
     
-    use_residual_list4 = [[4,5]]
-    use_residual_list_all = [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
-        + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
-        + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
-        + [[i for i in range(6) if i not in [j, j+1]] for j in range(5)] \
-        + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
-        + [[i for i in range(6)]]
-
+    use_residual_list4 = [[2,3,4,5], [3, 4, 5], [4, 5], [5], []]
+    # use_residual_list_all = [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
+    #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
+    #     + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
+    #     + [[i for i in range(6) if i not in [j, j+1]] for j in range(5)] \
+    #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
+    #     + [[i for i in range(6)]]
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0,1)]
+    seeds = [240+i for i in range(0,5)]
 
     commands_dict = {
         # "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
         "add3_nc": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
         "mod3" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
+        "mod3_nc" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
+
+        "modp" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
+        "modp_nc" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
+
         "parity": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
         "parity_nc_repeat": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
         "sumd_c": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
-
-    choice = "mod3"
-    causal_training = False
-    autoregressive_training = False
-
-    batch_size = 2048 if not causal_training else 256
-    max_iters = 2000 if not causal_training else 5000
-    learning_rate = 0.000026441 if not causal_training else  0.00026441
-    warmup_iters = 200 if not causal_training else 400
-    # batch_size = 256
-    # max_iters = 5000 
-    # learning_rate = 0.0001
-    # warmup_iters = 400
-
-    
     for seed in seeds:
-    # for use_pe in ['nope', 'original']: # 'original''nope', 
 
-        # for use_residual_list in [use_residual_list2, use_residual_list3]: # use_residual_list1, use_residual_list2, 
-        # for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
-        for use_residual_list in [use_residual_list4]: # use_residual_list1, use_residual_list2, 
+        for choice in ["mod3", "mod3_nc", "modp_nc", "modp"]:
+            # choice = "mod3_nc"
+            causal_training = False
+            autoregressive_training = False
+
+            batch_size = 4096 if not causal_training else 256
+            max_iters = 3000 if not causal_training else 5000
+            learning_rate = 0.000026441 if not causal_training else  0.00026441
+            warmup_iters = 400 if not causal_training else 400
+
+
+            # batch_size = 2048 if not causal_training else 256
+            # max_iters = 2000 if not causal_training else 5000
+            # learning_rate = 0.000026441 if not causal_training else  0.00026441
+            # warmup_iters = 200 if not causal_training else 400
+            # batch_size = 256
+            # max_iters = 5000 
+            # learning_rate = 0.0001
+            # warmup_iters = 400
+
             
+            # for use_pe in ['nope', 'original']: # 'original''nope', 
 
-            # no_att_residual_list = [True]
-            # no_mlp_residual_list = [True]
+            # for use_residual_list in [use_residual_list2, use_residual_list3]: # use_residual_list1, use_residual_list2, 
+            # for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
+            for use_residual_list in [use_residual_list4]: # use_residual_list1, use_residual_list2, 
+                
 
-            not_causal_list = [False] * len(use_residual_list)
-            # not_causal_list = [False]
-            # bs = [512]
+                # no_att_residual_list = [True]
+                # no_mlp_residual_list = [True]
+                bval = True if 'nc' in choice else False
+                not_causal_list = [bval] * len(use_residual_list)
+                # not_causal_list = [False]
+                # bs = [512]
 
-            # n_layers = [,]
-            # no SC[i] SC[i+1] yes lwp=True
-            # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
-            # layerwise_pe_list = [True for i in range(5)]
-            
+                # n_layers = [,]
+                # no SC[i] SC[i+1] yes lwp=True
+                # use_residual_list = [[j for j in range(6) if j not in [i, i+1]] for i in range(5)]
+                # layerwise_pe_list = [True for i in range(5)]
+                
 
-            # do a multi-processing, using 2 processes at a time
-            from multiprocessing import Pool
-            from functools import partial
-            
+                # do a multi-processing, using 2 processes at a time
+                from multiprocessing import Pool
+                from functools import partial
+                
 
-            # for seed in [222, 333, 444]:
-            # for use_pe in ['nope', 'original']: # 'original''nope',
-            for use_pe in ['original', 'nope']: # 'original''nope',
+                # for seed in [222, 333, 444]:
+                # for use_pe in ['nope', 'original']: # 'original''nope',
+                # for use_pe in ['original', 'nope']: # 'original''nope',
+                for use_pe in ['nope']: # 'original''nope',
 
-                out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
-                os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
 
-                pool = Pool(1)
-                func = partial(run_training, out_name)
-                args = [{
-                    'not_causal': not_causal_list[i],
-                    'use_residual': use_residual_list[i],
-                    # 'n_layer': n_layers[i],
-                    'use_pe': use_pe,
-                    'general_seed': seed,
-                    'choice': choice,
+                    out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
+                    os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
 
-                    'causal_training': causal_training,
-                    'batch_size': batch_size, 
-                    'max_iters': max_iters,
-                    'learning_rate': learning_rate,
-                    'warmup_iters': warmup_iters,
-                    
-                    'command': commands_dict[choice],  
-                    'save_best_loss': True,
-                    'autoregressive_training': autoregressive_training,
+                    pool = Pool(1)
+                    func = partial(run_training, out_name)
+                    args = [{
+                        'not_causal': not_causal_list[i],
+                        'use_residual': use_residual_list[i],
+                        # 'n_layer': n_layers[i],
+                        'use_pe': use_pe,
+                        'general_seed': seed,
+                        'choice': choice,
 
-                    # 'no_att_residual': no_att_residual_list[i],
-                    # 'no_mlp_residual': no_mlp_residual_list[i],
-                    # 'batch_size': bs[i],
-                    # 'message': '',
-                    # 'layerwise_pe': True,
-                    # 'use_flesh': True,
-                    # 'layerwise_pe_list': layerwise_pe_list[i],
-                } for i in range(len(use_residual_list))]
-                # for arg in args:
-                    # func(arg)
-                pool.map(func, args)
-                pool.close()   
+                        'causal_training': causal_training,
+                        'batch_size': batch_size, 
+                        'max_iters': max_iters,
+                        'learning_rate': learning_rate,
+                        'warmup_iters': warmup_iters,
+                        
+                        'command': commands_dict[choice],  
+                        'save_best_loss': True,
+                        'autoregressive_training': autoregressive_training,
+
+                        # 'no_att_residual': no_att_residual_list[i],
+                        # 'no_mlp_residual': no_mlp_residual_list[i],
+                        # 'batch_size': bs[i],
+                        # 'message': '',
+                        # 'layerwise_pe': True,
+                        # 'use_flesh': True,
+                        # 'layerwise_pe_list': layerwise_pe_list[i],
+                    } for i in range(len(use_residual_list))]
+                    # for arg in args:
+                        # func(arg)
+                    pool.map(func, args)
+                    pool.close()   
 
                 # implement a teacher forcing

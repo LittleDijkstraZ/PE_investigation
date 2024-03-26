@@ -275,6 +275,8 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         operation = 'sumd'
     elif 'mod3(' in abc:
         operation = 'mod3'
+    elif 'modp(' in abc:
+        operation = 'modp'
     elif 'oddc(' in abc:
         operation = 'oddc'
     else:
@@ -283,7 +285,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
     if operation in ['+', '-', '*']:
         [a,b] = abc.split(operation)
 
-    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3']:
+    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
@@ -340,6 +342,8 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         c = sum([int(d)%2 for d in a])
     elif operation == 'mod3':
         c = sum([int(i) for i in a]) % 3
+    elif operation == 'modp':
+        c = sum([int(i) for i in a[2:]]) % 3
 
     
     if '\n' in b: b = b[:-1]
@@ -728,7 +732,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'wrong  : {op}({a})={c_hat2}')
                                 print(f'correct: {op}({a})={c}')
 
-                    elif op in ['parity', 'sumd', 'oddc', 'mod3']:
+                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -1051,7 +1055,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print('outputs(x): ', outcome)
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
-                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3']:
+                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1142,12 +1146,22 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = math.floor(y * 10000) / 10000
                     data_list.append((float(x), float(y), operator))
 
-                elif operator in ['parity', 'sumd', 'oddc', 'mod3']:
+                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
+
+                # elif operator in ['modp']:
+                #     x = line.strip().split('=')[0]
+                #     x = x.replace(operator, '').replace('(', '').replace(')', '')
+                #     # x1 = line.strip().split(operator)[0]
+                #     # x = x1 + x
+                #     y = line.strip().split('=')[1]
+                #     # data_list.append((int(x), int(y), operator))
+                #     data_list.append((x, y, operator))
+
                     
 
     else: # generate random data
@@ -1206,6 +1220,14 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = sum([int(digit) for digit in str(x)]) % 3
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
+                
+                elif operator == 'modp':
+                    x = random.randint(0, 99999+1)
+                    x = str(x).zfill(5)
+                    y = sum([int(digit) for digit in str(x)[2:]]) % 3
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
 
                 elif operator == 'oddc':
                     x = random.randint(0, 999999+1)
@@ -1663,6 +1685,24 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
                 output_str = f"{operator}({x})={y}\n"
             else:
                 output_str = f"{operator}({x})=\n"
+
+            if fewshot:
+                output_str = prompt + output_str + '\n'
+            if add_space:
+                output_str = add_spaces(output_str)
+
+            if idx == 0:
+                data_str = output_str
+            else:
+                data_str += output_str
+
+        elif operator in ['modp']:
+            x, y = data_tuple[0], data_tuple[1]
+
+            if train:
+                output_str = f"{x[:2]}{operator}({x[2:]})={y}\n"
+            else:
+                output_str = f"{x[:2]}{operator}({x[2:]})=\n"
 
             if fewshot:
                 output_str = prompt + output_str + '\n'
