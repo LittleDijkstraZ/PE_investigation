@@ -271,6 +271,8 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         operation = '*'
     elif 'parity(' in abc:
         operation = 'parity'
+    elif 'paridy(' in abc:
+        operation = 'paridy'
     elif 'sumd(' in abc:
         operation = 'sumd'
     elif 'mod3(' in abc:
@@ -336,6 +338,10 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
 
     elif operation == 'parity':
         c = a.count('1') % 2
+    elif operation == 'paridy':
+        start_1 = a.find('1')
+        stop_1 = a.rfind('1')
+        c = a[start_1:stop_1+1].count('1') % 2
     elif operation == 'sumd':
         c = sum([int(i) for i in a]) % 10
     elif operation == 'oddc':
@@ -732,7 +738,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'wrong  : {op}({a})={c_hat2}')
                                 print(f'correct: {op}({a})={c}')
 
-                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp']:
+                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -1055,7 +1061,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print('outputs(x): ', outcome)
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
-                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp']:
+                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1146,21 +1152,12 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = math.floor(y * 10000) / 10000
                     data_list.append((float(x), float(y), operator))
 
-                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp']:
+                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
-
-                # elif operator in ['modp']:
-                #     x = line.strip().split('=')[0]
-                #     x = x.replace(operator, '').replace('(', '').replace(')', '')
-                #     # x1 = line.strip().split(operator)[0]
-                #     # x = x1 + x
-                #     y = line.strip().split('=')[1]
-                #     # data_list.append((int(x), int(y), operator))
-                #     data_list.append((x, y, operator))
 
                     
 
@@ -1203,9 +1200,15 @@ def get_data_list(filename=None, operator='+', delim=None):
                     x = random.randint(0, 2**12-1)
                     x = bin(x)[2:].zfill(12)
                     y = x.count('1') % 2
-                    # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
 
+                elif operator == 'paridy':
+                    x = random.randint(0, 2**12-1)
+                    x = bin(x)[2:].zfill(12)
+                    start_1 = x.find('1')
+                    end_1 = x.rfind('1')
+                    y = x[start_1:end_1+1].count('1') % 2
+                    data_list.append((x, y, operator))
 
                 elif operator == 'sumd':
                     x = random.randint(0, 99999+1)
@@ -1678,7 +1681,7 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
             else:
                 data_str += output_str
 
-        elif operator in ['parity', 'sumd', 'oddc', 'mod3']:
+        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy']:
             x, y = data_tuple[0], data_tuple[1]
 
             if train:
