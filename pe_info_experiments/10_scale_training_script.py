@@ -231,7 +231,8 @@ if __name__ == "__main__":
                 # for seed in [222, 333, 444]:
                 # for use_pe in ['nope', 'original']: # 'original''nope',
                 # for use_pe in ['original', 'nope']: # 'original''nope',
-                for use_pe in ['nope']: # 'original''nope',
+                # for use_pe in ['nope']: # 'original''nope',
+                for use_pe in ['original']: # 'original''nope',
 
 
                     out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
