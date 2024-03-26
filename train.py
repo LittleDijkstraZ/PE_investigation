@@ -824,6 +824,10 @@ if __name__ == "__main__":
                 print_model_output(model, encode, decode, device=device, max_new_tokens=3, start='$42+79=')
                 print_model_output(model, encode, decode, device=device, max_new_tokens=3, start='42+79=')
 
+
+        if test_accuracy > 99:
+            break
+
         # termination conditions
         if iter_num > max_iters:
             break
