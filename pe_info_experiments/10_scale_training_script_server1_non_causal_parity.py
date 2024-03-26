@@ -37,11 +37,8 @@ def run_training(out_name,
         # 'warmup_iters': 400,
 
         ### for non causal task
-        # 'learning_rate': 0.000026441, # 0126 try to preven rank degen
-        # 'warmup_iters': 200,
-        'learning_rate': kwargs['learning_rate'] if 'learning_rate' in kwargs else 0.0002644, # 0126 try to preven rank degen
-        'warmup_iters': kwargs['max_iters']*0.1 if 'max_iters' in kwargs else 400,
-
+        'learning_rate': kwargs['learning_rate'] if 'learning_rate' in kwargs else 0.00026441, # 0126 try to preven rank degen
+        'warmup_iters': kwargs['warmup_iters'] if 'warmup_iters' in kwargs else 200,
 
         'use_residual': kwargs['use_residual'],
         # 'layerwise_pe': kwargs['layerwise_pe'],
@@ -109,10 +106,8 @@ def run_training(out_name,
         command_params['batch_size'] = kwargs['batch_size']
     if 'causal_training' in kwargs:
         command_params['causal_training'] = kwargs['causal_training']
-    if 'save_best_loss' in kwargs:
-        command_params['save_best_loss'] = kwargs['save_best_loss']
-    if 'autoregressive_training' in kwargs:
-        command_params['autoregressive_training'] = kwargs['autoregressive_training']
+
+    command_params['save_final'] = False
 
     # command = "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py "
     # command = "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py "
@@ -149,14 +144,6 @@ if __name__ == "__main__":
     # control
 
     # use_residual_list = [[3, 4, 5]]
-    use_residual_list1 = [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)]
-    use_residual_list2 = [[i for i in range(6) if i not in [j, j+1]] for j in range(5)]
-
-    # use_residual_list2 = [[i for i in range(6) if i not in [j, j+2]] for j in range(4)]
-    # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
-    use_residual_list4 = [[i for i in range(6)]]
-    
-    use_residual_list4 = [[4,5]]
     use_residual_list_all = [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
         + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
         + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
@@ -164,31 +151,21 @@ if __name__ == "__main__":
         + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
         + [[i for i in range(6)]]
 
+        #  + [[i for i in range(6) if i not in [j, j+2]] for j in range(4)]
+    # use_residual_list4 = [[1,2]]
+
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0,1)]
+    seeds = [240+i for i in range(5, 10)]
 
     commands_dict = {
-        # "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
-        "add3_nc": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
-        "mod3" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
+        "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
         "parity": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
-        "parity_nc_repeat": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
-        "sumd_c": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
+        "sumd": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
 
-    choice = "mod3"
+    choice = "parity"
     causal_training = False
-    autoregressive_training = False
-
-    batch_size = 2048 if not causal_training else 256
-    max_iters = 2000 if not causal_training else 5000
-    learning_rate = 0.000026441 if not causal_training else  0.00026441
-    warmup_iters = 200 if not causal_training else 400
-    # batch_size = 256
-    # max_iters = 5000 
-    # learning_rate = 0.0001
-    # warmup_iters = 400
 
     
     for seed in seeds:
@@ -196,8 +173,9 @@ if __name__ == "__main__":
 
         # for use_residual_list in [use_residual_list2, use_residual_list3]: # use_residual_list1, use_residual_list2, 
         # for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
-        for use_residual_list in [use_residual_list4]: # use_residual_list1, use_residual_list2, 
+        for use_residual_list in [use_residual_list_all]: # use_residual_list1, use_residual_list2, 
             
+
 
             # no_att_residual_list = [True]
             # no_mlp_residual_list = [True]
@@ -235,14 +213,11 @@ if __name__ == "__main__":
                     'choice': choice,
 
                     'causal_training': causal_training,
-                    'batch_size': batch_size, 
-                    'max_iters': max_iters,
-                    'learning_rate': learning_rate,
-                    'warmup_iters': warmup_iters,
-                    
+                    'batch_size': 2048 if not causal_training else 256,
+                    'max_iters': 2000 if not causal_training else 5000,
+                    'learning_rate': 0.000026441 if not causal_training else  0.00026441,
+                    'warmup_iters': 200 if not causal_training else 400,
                     'command': commands_dict[choice],  
-                    'save_best_loss': True,
-                    'autoregressive_training': autoregressive_training,
 
                     # 'no_att_residual': no_att_residual_list[i],
                     # 'no_mlp_residual': no_mlp_residual_list[i],
@@ -255,6 +230,4 @@ if __name__ == "__main__":
                 # for arg in args:
                     # func(arg)
                 pool.map(func, args)
-                pool.close()   
-
-                # implement a teacher forcing
+                pool.close()

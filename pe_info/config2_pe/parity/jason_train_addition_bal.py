@@ -52,6 +52,8 @@ warmup_iters = 100 # not super necessary potentially
 
 device='cuda:0'
 
+non_causal_fix_length = 23 # for 12-digits parity; this actually  doesn't matter if all are padded with 0 to 6 digits
+
 # on macbook also add
 # device = 'cpu'  # run on cpu only
 # compile = False # do not torch compile the model

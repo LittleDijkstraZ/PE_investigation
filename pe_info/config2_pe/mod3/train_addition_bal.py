@@ -1,40 +1,29 @@
 # train a miniature character-level shakespeare model
 # good for debugging and playing on macbooks and such
 
-
-
-use_pe = 'original'
-pe_status = '' if use_pe=='original' else f'_{use_pe}'
-use_residual = True
-residual_status = '' if use_residual else '_noresidual'
-
-
-out_dir = f'outputs/sumd{pe_status}{residual_status}'
+out_dir = 'out2/sin'
 eval_interval = 250 # keep frequent because we'll overfit
 eval_iters = 200
 log_interval = 10 # don't print too too often
-
-
 
 # we expect to overfit on this small dataset, so only save when val improves
 always_save_checkpoint = False
 
 wandb_log = True # override via command line if you like
-wandb_project = 'sumd'
-wandb_run_name = f'sumd{pe_status}{residual_status}'
+wandb_project = 'sin_sqrt'
+wandb_run_name = 'sin'
 
 data_type='text'
 data_format='plain'
-operator = 'sumd'
-dataset = 'sumd'
-# batch_size = 256
-batch_size = 2048 # much larger batch size
+operator='sin'
+dataset = 'sin'
+batch_size = 256
 block_size = 256 # context of up to 256 previous characters
-train_data_path = 'train_sumd_10000.txt'
+train_data_path = 'train_sin_10000.txt'
 # val_data_path = 'val.bin'
-ckpt_path_name = 'ckpt_10000.pt'
+ckpt_path_name = 'ckpt.pt'
 eval_addition = True
-start = "FILE:data/sumd/test_sumd_10000.txt"
+start = "FILE:data/sin/test_sin_10000.txt"
 eval_addition_train = True
 # start_train = "FILE:data/one-sided-subtraction/plain/add_examples_10000_trainprompt.txt"
 
@@ -52,8 +41,6 @@ beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
 warmup_iters = 100 # not super necessary potentially
 
 device='cuda:0'
-# causal_training=False # we can train it non-causally as well
-non_causal_fix_length = 14 # for 5-digit sumd
 
 # on macbook also add
 # device = 'cpu'  # run on cpu only

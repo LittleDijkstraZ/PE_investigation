@@ -273,6 +273,8 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         operation = 'parity'
     elif 'sumd(' in abc:
         operation = 'sumd'
+    elif 'mod3(' in abc:
+        operation = 'mod3'
     elif 'oddc(' in abc:
         operation = 'oddc'
     else:
@@ -281,7 +283,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
     if operation in ['+', '-', '*']:
         [a,b] = abc.split(operation)
 
-    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc']:
+    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
@@ -336,6 +338,9 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         c = sum([int(i) for i in a]) % 10
     elif operation == 'oddc':
         c = sum([int(d)%2 for d in a])
+    elif operation == 'mod3':
+        c = sum([int(i) for i in a]) % 3
+
     
     if '\n' in b: b = b[:-1]
 
@@ -534,6 +539,8 @@ def evaluate_addition_new(config, model, ctx, encode, decode, verbose=False, num
 def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, num_digit=3, zero_pad=False, reverse_ab=False, reverse_c=False,
                             algo_reason=False, binary=False, fewshot=False, data_type='binary', operator='+', data_format='plain', verbose_correct=False, analyze=False):
     model.eval()
+    causal_training = config['causal_training']
+
     start = config['start'] if 'start' in config.keys() else "FILE:prompt/prompt_addition_pad_test_0.01.txt"
     device = config['device']
     test_batch_size = config['test_batch_size'] if 'test_batch_size' in config.keys() else 128
@@ -609,6 +616,8 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
     for line_idx in line_idxs:
         line = lines[line_idx]
         line.strip('\n')
+        # if operator in ['oddc', 'parity', 'sumd']:
+        #     line = '\n' + line 
         start_ids = encode(line)
         x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
         len_x = len(x[0])
@@ -635,10 +644,17 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
         batch = batch_list[batch_idx]
         x_list = [input_tuple[0] for input_tuple in batch]
         x = torch.cat(x_list, dim=0)
+        max_answer_len = max([len(str(input_tuple[5])) for input_tuple in batch])
         # run generation
         with torch.no_grad():
             with ctx:
-                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                max_new_tokens = max_answer_len + 2
+                # top_k = 1 if not causal_training else top_k
+                # temperature = 1 if not causal_training else temperature
+                # y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=1)
+
+
                 outcome_list = [decode(y_i.tolist()) for y_i in y]
                 for i, outcome in enumerate(outcome_list):
                     _, len_x, line_start, a, b, c, a_d, b_d, num_carry = batch[i]
@@ -646,15 +662,19 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                     #     print(c_hat)
                     # c_hat = c_hat.split('+')[-1].split('=')[-1]
                     c_hat = outcome[len_x:]
+                    if not causal_training:
+                        answer_len = len(str(c))
+                        c_hat = c_hat[:answer_len] # for noncausal, the model is not required to output termination token
+                    else: # for causal training
 
-                    # consider the case where c_hat contains non-digit number ('+','=','\n')
-                    
-                    if '$' == line_start: # handle $ prompt $
-                        c_hat = c_hat.split('$')[0]
-                    else:
-                        if '\n' == c_hat[-1]: # handle cases where it ends with '\n'
-                            c_hat = c_hat[:-1]
-                    
+                        # consider the case where c_hat contains non-digit number ('+','=','\n')
+                        
+                        if '$' == line_start: # handle $ prompt $
+                            c_hat = c_hat.split('$')[0]
+                        else:
+                            if '\n' == c_hat[-1]: # handle cases where it ends with '\n'
+                                c_hat = c_hat[:-1]
+                        
                     c_hat2 = c_hat
                     if zero_pad:
                         c_hat2 = remove_zero_pad(c_hat)
@@ -682,6 +702,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                     else: # c_hat2 is not a number
                         c = str(c)
 
+
                     if op in ['+','-','*']:
                         if c == c_hat2:
                             correct+=1
@@ -707,7 +728,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'wrong  : {op}({a})={c_hat2}')
                                 print(f'correct: {op}({a})={c}')
 
-                    elif op in ['parity', 'sumd', 'oddc']:
+                    elif op in ['parity', 'sumd', 'oddc', 'mod3']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -818,7 +839,7 @@ def evaluate_addition_multidigit(config, model, ctx, encode, decode, verbose=Fal
                     #     print(c_hat)
                     # c_hat = c_hat.split('+')[-1].split('=')[-1]
                     c_hat = outcome[len_x:]
-
+        
                     # consider the case where c_hat contains non-digit number ('+','=','\n')
 
                     if '$' == line[0]: # handle $ prompt $
@@ -833,7 +854,7 @@ def evaluate_addition_multidigit(config, model, ctx, encode, decode, verbose=Fal
                     
                     if reverse_c:
                         c_hat2 = reverse_string(c_hat2)
-                    
+                
                     if algo_reason:
                         if '</scratch>\n' in c_hat: 
                             c_hat2 = c_hat.split('</scratch>\n')[1].split('\n')[0]
@@ -1030,7 +1051,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print('outputs(x): ', outcome)
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
-                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc']:
+                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1121,11 +1142,13 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = math.floor(y * 10000) / 10000
                     data_list.append((float(x), float(y), operator))
 
-                elif operator in ['parity', 'sumd', 'oddc']:
+                elif operator in ['parity', 'sumd', 'oddc', 'mod3']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
-                    data_list.append((int(x), int(y), operator))
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+                    
 
     else: # generate random data
         if operator in ['text']:
@@ -1164,18 +1187,33 @@ def get_data_list(filename=None, operator='+', delim=None):
 
                 elif operator == 'parity':
                     x = random.randint(0, 2**12-1)
-                    y = bin(x)[2:].count('1') % 2
-                    data_list.append((int(x), int(y), operator))
+                    x = bin(x)[2:].zfill(12)
+                    y = x.count('1') % 2
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
 
                 elif operator == 'sumd':
-                    x = random.randint(0, 999999+1)
+                    x = random.randint(0, 99999+1)
+                    x = str(x).zfill(5)
                     y = sum([int(digit) for digit in str(x)]) % 10
-                    data_list.append((int(x), int(y), operator))
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
+                elif operator == 'mod3':
+                    x = random.randint(0, 99999+1)
+                    x = str(x).zfill(5)
+                    y = sum([int(digit) for digit in str(x)]) % 3
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
 
                 elif operator == 'oddc':
                     x = random.randint(0, 999999+1)
+                    x = str(x).zfill(6)
                     y = sum([int(digit)%2 for digit in str(x)]) 
-                    data_list.append((int(x), int(y), operator))
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
 
     return data_list
 
@@ -1618,7 +1656,7 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
             else:
                 data_str += output_str
 
-        elif operator in ['parity', 'sumd', 'oddc']:
+        elif operator in ['parity', 'sumd', 'oddc', 'mod3']:
             x, y = data_tuple[0], data_tuple[1]
 
             if train:

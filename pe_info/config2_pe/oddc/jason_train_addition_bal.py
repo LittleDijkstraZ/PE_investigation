@@ -51,6 +51,8 @@ beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
 warmup_iters = 100 # not super necessary potentially
 
 device='cuda:0'
+non_causal_fix_length = 15 # for 6-digit sumd; this actually  doesn't matter if all are padded with 0 to 6 digits
+
 
 # causal_training=False
 

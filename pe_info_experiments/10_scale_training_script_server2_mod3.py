@@ -111,6 +111,8 @@ def run_training(out_name,
         command_params['causal_training'] = kwargs['causal_training']
     if 'save_best_loss' in kwargs:
         command_params['save_best_loss'] = kwargs['save_best_loss']
+    if 'save_final' in kwargs:
+        command_params['save_final'] = kwargs['save_final']
     if 'autoregressive_training' in kwargs:
         command_params['autoregressive_training'] = kwargs['autoregressive_training']
 
@@ -165,7 +167,7 @@ if __name__ == "__main__":
         + [[i for i in range(6)]]
 
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0,1)]
+    seeds = [240+i for i in range(0,5)]
 
     commands_dict = {
         # "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
@@ -181,10 +183,11 @@ if __name__ == "__main__":
     causal_training = False
     autoregressive_training = False
 
-    batch_size = 2048 if not causal_training else 256
+    batch_size = 4096 if not causal_training else 256
     max_iters = 2000 if not causal_training else 5000
     learning_rate = 0.000026441 if not causal_training else  0.00026441
-    warmup_iters = 200 if not causal_training else 400
+    warmup_iters = 400
+
     # batch_size = 256
     # max_iters = 5000 
     # learning_rate = 0.0001
@@ -196,7 +199,7 @@ if __name__ == "__main__":
 
         # for use_residual_list in [use_residual_list2, use_residual_list3]: # use_residual_list1, use_residual_list2, 
         # for use_residual_list in [use_residual_list1, use_residual_list2]: # use_residual_list1, use_residual_list2, 
-        for use_residual_list in [use_residual_list4]: # use_residual_list1, use_residual_list2, 
+        for use_residual_list in [use_residual_list_all]: # use_residual_list1, use_residual_list2, 
             
 
             # no_att_residual_list = [True]
@@ -241,7 +244,8 @@ if __name__ == "__main__":
                     'warmup_iters': warmup_iters,
                     
                     'command': commands_dict[choice],  
-                    'save_best_loss': True,
+                    'save_best_loss': False,
+                    'save_final': False,
                     'autoregressive_training': autoregressive_training,
 
                     # 'no_att_residual': no_att_residual_list[i],
