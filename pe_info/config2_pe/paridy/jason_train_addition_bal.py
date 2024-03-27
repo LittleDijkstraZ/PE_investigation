@@ -29,11 +29,11 @@ operator = 'paridy'
 dataset = 'paridy'
 batch_size = 256
 block_size = 256 # context of up to 256 previous characters
-train_data_path = 'train_paridy_10000.txt'
+train_data_path = 'train_paridy_2000.txt'
 # val_data_path = 'val.bin'
-ckpt_path_name = 'ckpt_10000.pt'
+ckpt_path_name = 'ckpt_2000.pt'
 eval_addition = True
-start = "FILE:data/paridy/test_paridy_10000.txt"
+start = "FILE:data/paridy/test_paridy_2000.txt"
 eval_addition_train = True
 # start_train = "FILE:data/one-sided-subtraction/plain/add_examples_10000_trainprompt.txt"
 

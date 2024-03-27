@@ -164,7 +164,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
     #     + [[i for i in range(6)]]
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(6,7)]
+    seeds = [240+i for i in range(7,8)]
 
     commands_dict = {
         # "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
@@ -188,7 +188,7 @@ if __name__ == "__main__":
             autoregressive_training = False
 
             batch_size = 4096 if not causal_training else 256
-            max_iters = 2000 if not causal_training else 5000
+            max_iters = 10000 if not causal_training else 5000
             # learning_rate = 0.000026441 if not causal_training else  0.00026441
             learning_rate = 0.000026441 if not causal_training else  0.00026441
 
