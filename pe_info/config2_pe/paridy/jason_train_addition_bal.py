@@ -29,11 +29,11 @@ operator = 'paridy'
 dataset = 'paridy'
 batch_size = 256
 block_size = 256 # context of up to 256 previous characters
-train_data_path = 'train_paridy_2000.txt'
+train_data_path = 'train_paridy_10000.txt'
 # val_data_path = 'val.bin'
-ckpt_path_name = 'ckpt_2000.pt'
+ckpt_path_name = 'ckpt_10000.pt'
 eval_addition = True
-start = "FILE:data/paridy/test_paridy_2000.txt"
+start = "FILE:data/paridy/test_paridy_10000.txt"
 eval_addition_train = True
 # start_train = "FILE:data/one-sided-subtraction/plain/add_examples_10000_trainprompt.txt"
 
@@ -52,7 +52,6 @@ max_iters = 2000
 learning_rate = 0.000026441 
 warmup_iters = 200 
 
-non_causal_fix_length = 23 # for 12-digits paridy; this actually  doesn't matter if all are padded with 0 to 6 digits
 
 # on macbook also add
 # device = 'cpu'  # run on cpu only

@@ -287,7 +287,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
     if operation in ['+', '-', '*']:
         [a,b] = abc.split(operation)
 
-    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp']:
+    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
@@ -341,7 +341,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
     elif operation == 'paridy':
         start_1 = a.find('1')
         stop_1 = a.rfind('1')
-        c = a[start_1:stop_1+1].count('1') % 2
+        c = a[start_1:stop_1+1].count('0') % 2
     elif operation == 'sumd':
         c = sum([int(i) for i in a]) % 10
     elif operation == 'oddc':
@@ -1207,7 +1207,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     x = bin(x)[2:].zfill(12)
                     start_1 = x.find('1')
                     end_1 = x.rfind('1')
-                    y = x[start_1:end_1+1].count('1') % 2
+                    y = x[start_1:end_1+1].count('0') % 2
                     data_list.append((x, y, operator))
 
                 elif operator == 'sumd':

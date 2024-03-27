@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
     use_residual_list4 = [[i for i in range(6)]]
     
-    use_residual_list4 = [[2,3,4,5], [3, 4, 5], [4, 5], [5], []]
+    use_residual_list4 = [[1,2,3,4,5]]
     # use_residual_list_all = [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
@@ -177,23 +177,23 @@ if __name__ == "__main__":
 
         "parity": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
         "parity_nc_repeat": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
-        "paridy": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
-        "paridy_nc": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
+        "paridy": "python3 train.py pe_info/config2_pe/paridy/jason_train_addition_bal.py ",
+        "paridy_nc": "python3 train.py pe_info/config2_pe/paridy/jason_train_addition_bal.py ",
 
         "sumd_c": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
     for seed in seeds:
 
-        for choice in ["paridy", "paridy_nc"]:
+        for choice in ["paridy"]: # "paridy_nc", 
             # choice = "mod3_nc"
             causal_training = False
             autoregressive_training = False
 
-            batch_size = 2048 
-            max_iters = 2000 
+            batch_size = 4096 
+            max_iters = 4000 
             learning_rate = 0.000026441 
-            warmup_iters = 200 
+            warmup_iters = 400 
 
 
             # batch_size = 2048 if not causal_training else 256
@@ -235,7 +235,7 @@ if __name__ == "__main__":
                 # for use_pe in ['nope', 'original']: # 'original''nope',
                 # for use_pe in ['original', 'nope']: # 'original''nope',
                 # for use_pe in ['nope']: # 'original''nope',
-                for use_pe in ['original', 'nope']: # 'original''nope',
+                for use_pe in ['nope', 'original']: # 'original''nope',
 
 
                     out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.

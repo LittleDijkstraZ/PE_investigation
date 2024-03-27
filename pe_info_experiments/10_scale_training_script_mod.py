@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
     use_residual_list4 = [[i for i in range(6)]]
     
-    use_residual_list4 = [[2,3,4,5], [3, 4, 5], [4, 5], [5], []]
+    # use_residual_list4 = [[2,3,4,5], [3, 4, 5], [4, 5], [5], []]
     # use_residual_list_all = [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
     #     + [[i for i in range(6)]]
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0,5)]
+    seeds = [240+i for i in range(6,7)]
 
     commands_dict = {
         # "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
@@ -182,14 +182,16 @@ if __name__ == "__main__":
     }
     for seed in seeds:
 
-        for choice in ["mod3", "mod3_nc", "modp_nc", "modp"]:
+        for choice in ["modp_nc"]:
             # choice = "mod3_nc"
             causal_training = False
             autoregressive_training = False
 
             batch_size = 4096 if not causal_training else 256
             max_iters = 2000 if not causal_training else 5000
+            # learning_rate = 0.000026441 if not causal_training else  0.00026441
             learning_rate = 0.000026441 if not causal_training else  0.00026441
+
             warmup_iters = 400 if not causal_training else 400
 
 
@@ -232,7 +234,7 @@ if __name__ == "__main__":
                 # for use_pe in ['nope', 'original']: # 'original''nope',
                 # for use_pe in ['original', 'nope']: # 'original''nope',
                 # for use_pe in ['nope']: # 'original''nope',
-                for use_pe in ['original']: # 'original''nope',
+                for use_pe in ['nope']: # 'original''nope',
 
 
                     out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
