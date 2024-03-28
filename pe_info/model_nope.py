@@ -134,9 +134,9 @@ class CausalSelfAttention(nn.Module):
         y = self.resid_dropout(self.c_proj(y))
         return y
     
-    def _reset_parameters(self):
-        nn.init.normal_(self.c_attn.weight)
-        nn.init.normal_(self.c_proj.weight)
+    def _reset_parameters(self, std=1):
+        nn.init.normal_(self.c_attn.weight, mean=0, std=0.02) 
+        nn.init.normal_(self.c_proj.weight, mean=0, std=0.02)
         return 
 
 
