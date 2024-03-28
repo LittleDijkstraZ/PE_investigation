@@ -111,6 +111,8 @@ def run_training(out_name,
         command_params['causal_training'] = kwargs['causal_training']
     if 'save_best_loss' in kwargs:
         command_params['save_best_loss'] = kwargs['save_best_loss']
+    if 'save_final' in kwargs:
+        command_params['save_final'] = kwargs['save_final']
     if 'autoregressive_training' in kwargs:
         command_params['autoregressive_training'] = kwargs['autoregressive_training']
 
@@ -179,7 +181,7 @@ if __name__ == "__main__":
         "modp_nc" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
 
         "parity": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
-        "parity_nc_repeat": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
+        "parity_nc": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
         "paridy": "python3 train.py pe_info/config2_pe/paridy/jason_train_addition_bal.py ",
         "paridy_nc": "python3 train.py pe_info/config2_pe/paridy/jason_train_addition_bal.py ",
 
@@ -188,7 +190,7 @@ if __name__ == "__main__":
     }
     for seed in seeds:
 
-        for choice in ["paridy", "paridy_nc"]:
+        for choice in ["parity", "parity_nc", "paridy", "paridy_nc"]:
             # choice = "mod3_nc"
             causal_training = False
             autoregressive_training = False
@@ -223,7 +225,7 @@ if __name__ == "__main__":
 
                 # no_att_residual_list = [True]
                 # no_mlp_residual_list = [True]
-                bval = True if 'nc' in choice else False
+                bval = True if 'nc' in choice else False    
                 not_causal_list = [bval] * len(use_residual_list)
                 # not_causal_list = [False]
                 # bs = [512]
@@ -266,7 +268,8 @@ if __name__ == "__main__":
                         'warmup_iters': warmup_iters,
                         
                         'command': commands_dict[choice],  
-                        'save_best_loss': True,
+                        'save_best_loss': False,
+                        'save_final': False,
                         'autoregressive_training': autoregressive_training,
 
                         # 'no_att_residual': no_att_residual_list[i],
