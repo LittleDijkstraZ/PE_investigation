@@ -11,6 +11,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import math
 import inspect
 from dataclasses import dataclass
+from venv import create
 
 import torch
 import torch.nn as nn
@@ -399,24 +400,55 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None, debug=False, causal_training=True, attn_mask=None):
+    @staticmethod
+    def create_equal_distancing_vecotrs(n, dim):
+        # Initialize an array to store the vectors
+        vectors = np.zeros((n, dim))
+
+        # Generate orthogonal vectors (for simplicity, using an identity matrix for the first n vectors)
+        for i in range(n):
+            vectors[i, i] = 1
+
+        # Normalize the vectors to have a norm of 1 (this step is optional and depends on the desired property)
+        vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+
+        # Ensure equal pairwise dot product by adjusting the vectors
+        # Adding a small component that is common to all vectors
+        common_component = np.ones(dim) * 0.01  # Small component added to ensure a non-zero dot product
+        vectors += common_component
+
+        # Normalize again to ensure they're all of equal length (optional depending on requirements)
+        vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+
+        # Verify the pairwise dot products
+        pairwise_dot_products = np.dot(vectors, vectors.T)
+
+        return vectors, pairwise_dot_products
+
+    def forward(self, idx, targets=None, debug=False, causal_training=True, attn_mask=None, equal_distancing_exp=False):
         
 
         # forward the GPT model itselfs
 
-        ## Nope
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        if self.config.use_pe == 'original':
-            device = idx.device
-            b, t = idx.size()
-            assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-            pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
-            pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
-            x = tok_emb + pos_emb
-        elif self.config.use_pe == 'sin':
-            x = self.transformer.wpe(tok_emb)
-        else:
-            x = tok_emb
+        if equal_distancing_exp:
+            L = idx.size(1)
+            vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
+            x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
+            
+        else: # go normally
+            ## Nope
+            tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+            if self.config.use_pe == 'original':
+                device = idx.device
+                b, t = idx.size()
+                assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
+                pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+                pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+                x = tok_emb + pos_emb
+            elif self.config.use_pe == 'sin':
+                x = self.transformer.wpe(tok_emb)
+            else:
+                x = tok_emb
 
         x = self.transformer.drop(x)
 
