@@ -277,6 +277,8 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         operation = 'sumd'
     elif 'mod3(' in abc:
         operation = 'mod3'
+    elif 'mods(' in abc:
+        operation = 'mods'
     elif 'modp(' in abc:
         operation = 'modp'
     elif 'oddc(' in abc:
@@ -287,7 +289,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
     if operation in ['+', '-', '*']:
         [a,b] = abc.split(operation)
 
-    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
+    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
@@ -346,7 +348,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         c = sum([int(i) for i in a]) % 10
     elif operation == 'oddc':
         c = sum([int(d)%2 for d in a])
-    elif operation == 'mod3':
+    elif operation in ['mod3', 'mods']:
         c = sum([int(i) for i in a]) % 3
     elif operation == 'modp':
         c = sum([int(i) for i in a[2:]]) % 3
@@ -738,7 +740,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'wrong  : {op}({a})={c_hat2}')
                                 print(f'correct: {op}({a})={c}')
 
-                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
+                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -1061,7 +1063,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print('outputs(x): ', outcome)
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
-                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
+                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1152,7 +1154,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = math.floor(y * 10000) / 10000
                     data_list.append((float(x), float(y), operator))
 
-                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy']:
+                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
@@ -1219,6 +1221,13 @@ def get_data_list(filename=None, operator='+', delim=None):
 
                 elif operator == 'mod3':
                     x = random.randint(0, 99999+1)
+                    x = str(x).zfill(5)
+                    y = sum([int(digit) for digit in str(x)]) % 3
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
+                elif operator == 'mods':
+                    x = random.randint(0, 999+1)
                     x = str(x).zfill(5)
                     y = sum([int(digit) for digit in str(x)]) % 3
                     # data_list.append((int(x), int(y), operator))
@@ -1681,7 +1690,7 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
             else:
                 data_str += output_str
 
-        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy']:
+        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy', 'mods']:
             x, y = data_tuple[0], data_tuple[1]
 
             if train:
