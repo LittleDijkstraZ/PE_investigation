@@ -87,11 +87,14 @@ class CausalSelfAttention(nn.Module):
         self.causal = bool(not config.not_causal)
         # self._reset_parameters() # unfortunately, this does not help with the issue with normal attention
 
-    def forward(self, x, attn_mask=None):
+    def forward(self, x, attn_mask=None, no_c_attn=False):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
+        if no_c_attn:
+            q, k, v = x, x, x
+        else:
+            q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -245,7 +248,7 @@ class Block(nn.Module):
 
         print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe} | casual {not self.config.not_causal}")
 
-    def forward(self, x, attn_mask=None):
+    def forward(self, x, attn_mask=None, no_c_attn=False):
         if self.layerwise_pe:
             if self.pe_type == 'original':
                 device = x.device
@@ -259,11 +262,11 @@ class Block(nn.Module):
                 x = self.layer_wpe(x)
         
         if self.no_att_residual:
-            x = self.attn(self.ln_1(x), attn_mask=attn_mask)
+            x = self.attn(self.ln_1(x), attn_mask=attn_mask, no_c_attn=no_c_attn)
             # x = self.attn(x)
 
         else:
-            x = x + self.attn(self.ln_1(x), attn_mask=attn_mask) # original
+            x = x + self.attn(self.ln_1(x), attn_mask=attn_mask, no_c_attn=no_c_attn) # original
             # x = x + self.attn(x)
 
 
@@ -420,15 +423,16 @@ class GPT(nn.Module):
         # Normalize again to ensure they're all of equal length (optional depending on requirements)
         vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
         # shuffle the vectors
-        vectors = np.random.permutation(vectors) 
-        # vectors = vectors[0:1].repeat(n, axis=0)
+        vectors = np.random.permutation(vectors) # yes pairwise equal distancing
+        # vectors = np.random.rand(n, dim) # yes, because rand actually allows close to pairwise equal distancing
+        # vectors = vectors[0:1].repeat(n, axis=0) + np.arange(n)[..., None] * 0.1
         # Verify the pairwise dot products
         pairwise_dot_products = np.dot(vectors, vectors.T)
 
         return vectors, pairwise_dot_products
 
 
-    def forward(self, idx, targets=None, debug=False, causal_training=True, attn_mask=None, equal_distancing_exp=False):
+    def forward(self, idx, targets=None, debug=False, causal_training=True, attn_mask=None, equal_distancing_exp=False, no_c_attn=False):
         
 
         # forward the GPT model itselfs
@@ -459,7 +463,7 @@ class GPT(nn.Module):
         for bidx, block in enumerate(self.transformer.h):
             if debug:
                 print(bidx, end=' ')
-            x = block(x, attn_mask=attn_mask)
+            x = block(x, attn_mask=attn_mask, no_c_attn=no_c_attn)
             for tcidx in temp_counter:
                 if temp_counter[tcidx]['skip_count'] >= 0: # bug here (used to be >), now fixed because 
                     temp_counter[tcidx]['skip_count'] -= 1
