@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(6)]
     use_residual_list4 = [[i for i in range(6)]]
     
-    use_residual_list4 = [[3,4,5]]
+    use_residual_list4 = [[3,4,5], [0,1,2,3,4,5]]
     # use_residual_list_all = [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
@@ -185,7 +185,7 @@ if __name__ == "__main__":
     }
     for seed in seeds:
 
-        for choice in ["paridy"]: # "paridy_nc", 
+        for choice in ["paridy_nc"]: # "paridy_nc", 
             # choice = "mod3_nc"
             causal_training = False
             autoregressive_training = False

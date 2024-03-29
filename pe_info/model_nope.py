@@ -401,7 +401,7 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     @staticmethod
-    def create_equal_distancing_vecotrs(n, dim):
+    def create_equal_distancing_vecotrs(n, dim, small_component=0.00001): # the larger the small component, the closer the vectors
         # Initialize an array to store the vectors
         vectors = np.zeros((n, dim))
 
@@ -414,16 +414,19 @@ class GPT(nn.Module):
 
         # Ensure equal pairwise dot product by adjusting the vectors
         # Adding a small component that is common to all vectors
-        common_component = np.ones(dim) * 0.01  # Small component added to ensure a non-zero dot product
+        common_component = np.ones(dim) * small_component  # Small component added to ensure a non-zero dot product
         vectors += common_component
 
         # Normalize again to ensure they're all of equal length (optional depending on requirements)
         vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
-
+        # shuffle the vectors
+        vectors = np.random.permutation(vectors) 
+        # vectors = vectors[0:1].repeat(n, axis=0)
         # Verify the pairwise dot products
         pairwise_dot_products = np.dot(vectors, vectors.T)
 
         return vectors, pairwise_dot_products
+
 
     def forward(self, idx, targets=None, debug=False, causal_training=True, attn_mask=None, equal_distancing_exp=False):
         
