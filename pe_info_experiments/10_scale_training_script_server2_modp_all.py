@@ -185,6 +185,9 @@ if __name__ == "__main__":
         "modp" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
         "modp_nc" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
 
+        "mods": "python3 train.py pe_info/config2_pe/mods/jason_train_addition_bal.py ",
+        "mods_nc": "python3 train.py pe_info/config2_pe/mods/jason_train_addition_bal.py ",
+
         "parity": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
         "parity_nc_repeat": "python3 train.py pe_info/config2_pe/parity/jason_train_addition_bal.py ",
         "sumd_c": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
@@ -192,7 +195,7 @@ if __name__ == "__main__":
     }
     for seed in seeds:
 
-        for choice in ["mod3", "mod3_nc", "modp", "modp_nc",]:
+        for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
             # choice = "mod3_nc"
             causal_training = False
             autoregressive_training = False
