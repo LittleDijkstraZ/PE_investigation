@@ -92,7 +92,7 @@ class CausalSelfAttention(nn.Module):
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         if no_c_attn:
-            q, k, v = x, x, x
+            q, k, v = x/10.84, x/10.84, x/10.84
         else:
             q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -404,7 +404,7 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     @staticmethod
-    def create_equal_distancing_vecotrs(n, dim, small_component=0.00001): # the larger the small component, the closer the vectors
+    def create_equal_distancing_vecotrs(n, dim, small_component=0.01): # the larger the small component, the closer the vectors
         # Initialize an array to store the vectors
         vectors = np.zeros((n, dim))
 
@@ -420,8 +420,12 @@ class GPT(nn.Module):
         common_component = np.ones(dim) * small_component  # Small component added to ensure a non-zero dot product
         vectors += common_component
 
+
+        # for i in range(len(vectors)):
+        #     vectors[:-i] += common_component
+
         # Normalize again to ensure they're all of equal length (optional depending on requirements)
-        vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+        # vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
         # shuffle the vectors
         vectors = np.random.permutation(vectors) # yes pairwise equal distancing
         # vectors = np.random.rand(n, dim) # yes, because rand actually allows close to pairwise equal distancing
