@@ -404,7 +404,7 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     @staticmethod
-    def create_equal_distancing_vecotrs(n, dim, small_component=0.00001): # the larger the small component, the closer the vectors
+    def create_equal_distancing_vecotrs(n, dim, small_component=0.01): # the larger the small component, the closer the vectors
         # Initialize an array to store the vectors
         vectors = np.zeros((n, dim))
 
