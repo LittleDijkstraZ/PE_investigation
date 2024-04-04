@@ -165,6 +165,14 @@ class CausalSelfAttention(nn.Module):
                 att = new_gelu(att)
                 attn_sum = att.sum(dim=-1, keepdim=True)
                 att = att / attn_sum
+            elif func_config=='gelu_divabs':
+                att = new_gelu(att)
+                attn_sum = att.abs().sum(dim=-1, keepdim=True)
+                att = att / attn_sum
+            elif func_config=='sigmoid':
+                att = torch.sigmoid(att)
+                attn_sum = att.sum(dim=-1, keepdim=True)
+                att = att / attn_sum
             elif func_config=='divsum':
                 attn_sum = att.sum(dim=-1, keepdim=True)
                 att = att / attn_sum
