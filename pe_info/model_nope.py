@@ -140,32 +140,39 @@ class CausalSelfAttention(nn.Module):
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            
-            if ablation_config.get('no_softmax', False):
-                # att = att / att.sum(dim=-1, keepdim=True) # this wont work because sum of zero
-                if self.causal:
-                    bias =  torch.tril(torch.ones(T, T)).view(1, 1, T, T).to(att.device)
+
+            func_config = ablation_config['no_flash']
+
+            if self.causal:
+                bias =  torch.tril(torch.ones(T, T)).view(1, 1, T, T).to(att.device)
+                if func_config.get('softmax', False):
+                    att = att.masked_fill(bias[:,:,:T,:T] == 0, float('-inf'))
+                else:
                     att = att.masked_fill(bias[:,:,:T,:T] == 0, 0)
 
-                # change each
-                if ablation_config.get('yes_abs', False):
-                    att = att.abs()
-                if ablation_config.get('yes_relu', False):
-                    att = F.relu(att)
-
-                # change sum
-                if ablation_config.get('no_divsum', False):
-                    attn_sum = 1
-                elif ablation_config.get('yes_abs', False):
-                    attn_sum = att.abs().sum(dim=-1, keepdim=True)
-                else:
-                    attn_sum = att.sum(dim=-1, keepdim=True)
-                att = att / attn_sum
-            else:
-                if self.causal:
-                    bias =  torch.tril(torch.ones(T, T)).view(1, 1, T, T).to(att.device)
-                    att = att.masked_fill(bias[:,:,:T,:T] == 0, float('-inf'))
+            
+            if func_config.get('softmax', False):
                 att = F.softmax(att, dim=-1)
+            elif ablation_config.get('abs', False):
+                att = att.abs()
+                attn_sum = att.abs().sum(dim=-1, keepdim=True)
+                att = att / attn_sum
+            elif ablation_config.get('relu', False):
+                att = F.relu(att)
+                attn_sum = att.sum(dim=-1, keepdim=True)
+                att = att / attn_sum
+            elif func_config.get('gelu', False):
+                att = new_gelu(att)
+                attn_sum = att.sum(dim=-1, keepdim=True)
+                att = att / attn_sum
+            elif ablation_config.get('divsum', False):
+                attn_sum = att.sum(dim=-1, keepdim=True)
+                att = att / attn_sum
+            elif func_config.get('div1', False):
+                att = att
+
+
+                
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
 
