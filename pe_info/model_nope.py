@@ -14,6 +14,7 @@ import dataclasses
 from dataclasses import dataclass
 from venv import create
 
+from sqlalchemy import func
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -117,7 +118,8 @@ class CausalSelfAttention(nn.Module):
             attn_mask = torch.repeat_interleave(attn_mask.unsqueeze(1), self.n_head, dim=1) # (B, nh, T, T)
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        if self.flash and not ablation_config.get('no_flash', False):
+        func_config = ablation_config.get('func_config', False)
+        if self.flash and not func_config:
             # efficient attention using Flash Attention CUDA kernels
             if self.causal:
                 if attn_mask is None:
@@ -140,35 +142,33 @@ class CausalSelfAttention(nn.Module):
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-
-            func_config = ablation_config['no_flash']
-
+            if not func_config:
+                func_config = 'softmax' # go to default
             if self.causal:
                 bias =  torch.tril(torch.ones(T, T)).view(1, 1, T, T).to(att.device)
-                if func_config.get('softmax', False):
+                if func_config=='softmax':
                     att = att.masked_fill(bias[:,:,:T,:T] == 0, float('-inf'))
                 else:
                     att = att.masked_fill(bias[:,:,:T,:T] == 0, 0)
 
-            
-            if func_config.get('softmax', False):
+            if func_config=='softmax':
                 att = F.softmax(att, dim=-1)
-            elif ablation_config.get('abs', False):
+            elif func_config=='abs':
                 att = att.abs()
                 attn_sum = att.abs().sum(dim=-1, keepdim=True)
                 att = att / attn_sum
-            elif ablation_config.get('relu', False):
+            elif func_config=='relu':
                 att = F.relu(att)
                 attn_sum = att.sum(dim=-1, keepdim=True)
                 att = att / attn_sum
-            elif func_config.get('gelu', False):
+            elif func_config=='gelu':
                 att = new_gelu(att)
                 attn_sum = att.sum(dim=-1, keepdim=True)
                 att = att / attn_sum
-            elif ablation_config.get('divsum', False):
+            elif func_config=='divsum':
                 attn_sum = att.sum(dim=-1, keepdim=True)
                 att = att / attn_sum
-            elif func_config.get('div1', False):
+            elif func_config=='nodiv':
                 att = att
 
 
