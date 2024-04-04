@@ -10,12 +10,14 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 
 import math
 import inspect
+import dataclasses
 from dataclasses import dataclass
 from venv import create
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
 
 class SinusoidalPositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
@@ -87,14 +89,26 @@ class CausalSelfAttention(nn.Module):
         self.causal = bool(not config.not_causal)
         # self._reset_parameters() # unfortunately, this does not help with the issue with normal attention
 
-    def forward(self, x, attn_mask=None, no_c_attn=False):
+    def forward(self, x, attn_mask=None, ablation_config=dict()):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        if no_c_attn:
-            q, k, v = x/10.84, x/10.84, x/10.84
+        if ablation_config.get('shrink_x', False):
+            shrink_factor = float(ablation_config['shrink_x'])
+            q, k, v = x/shrink_factor, x/shrink_factor, x/shrink_factor
         else:
             q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
+            if ablation_config.get('no_Q', False):
+                q = x
+            if ablation_config.get('no_K', False):
+                k = x
+            if ablation_config.get('no_V', False):
+                v = x
+        if ablation_config.get('V_out', False):
+            if ablation_config.get('no_V', False):
+                print('V_out is set but no_V is set, this is not possible')
+            return x
+
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -103,7 +117,7 @@ class CausalSelfAttention(nn.Module):
             attn_mask = torch.repeat_interleave(attn_mask.unsqueeze(1), self.n_head, dim=1) # (B, nh, T, T)
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        if self.flash:
+        if self.flash and not ablation_config.get('no_flash', False):
             # efficient attention using Flash Attention CUDA kernels
             if self.causal:
                 if attn_mask is None:
@@ -126,18 +140,43 @@ class CausalSelfAttention(nn.Module):
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            if self.causal:
-                att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
             
-            att = F.softmax(att, dim=-1)
+            if ablation_config.get('no_softmax', False):
+                # att = att / att.sum(dim=-1, keepdim=True) # this wont work because sum of zero
+                if self.causal:
+                    bias =  torch.tril(torch.ones(T, T)).view(1, 1, T, T).to(att.device)
+                    att = att.masked_fill(bias[:,:,:T,:T] == 0, 0)
+
+                # change each
+                if ablation_config.get('yes_abs', False):
+                    att = att.abs()
+                if ablation_config.get('yes_relu', False):
+                    att = F.relu(att)
+
+                # change sum
+                if ablation_config.get('no_divsum', False):
+                    attn_sum = 1
+                elif ablation_config.get('yes_abs', False):
+                    attn_sum = att.abs().sum(dim=-1, keepdim=True)
+                else:
+                    attn_sum = att.sum(dim=-1, keepdim=True)
+                att = att / attn_sum
+            else:
+                if self.causal:
+                    bias =  torch.tril(torch.ones(T, T)).view(1, 1, T, T).to(att.device)
+                    att = att.masked_fill(bias[:,:,:T,:T] == 0, float('-inf'))
+                att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+
+            
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
         return y
     
+
     def _reset_parameters(self, std=1):
         nn.init.normal_(self.c_attn.weight, mean=0, std=0.02) 
         nn.init.normal_(self.c_proj.weight, mean=0, std=0.02)
@@ -164,53 +203,7 @@ class MLP(nn.Module):
         nn.init.normal_(self.c_proj.weight)
         return 
 
-import torch.nn.functional as F
 
-class SelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads):
-        super(SelfAttention, self).__init__()
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-
-        # Linear projections for query, key, and value
-        self.W_q = nn.Linear(embed_dim, embed_dim)
-        self.W_k = nn.Linear(embed_dim, embed_dim)
-        self.W_v = nn.Linear(embed_dim, embed_dim)
-
-    def split_heads(self, x):
-        batch_size, seq_len, embed_dim = x.size()
-        x = x.view(batch_size, seq_len, self.num_heads, self.head_dim)
-        return x.permute(0, 2, 1, 3)
-
-    def forward(self, x):
-        batch_size, seq_len, embed_dim = x.size()
-
-        # Linearly project the input to queries, keys, and values
-        q = self.W_q(x)
-        k = self.W_k(x)
-        v = self.W_v(x)
-
-        # Split the queries, keys, and values into multiple heads
-        q = self.split_heads(q)
-        k = self.split_heads(k)
-        v = self.split_heads(v)
-
-        # Calculate scaled dot-product attention scores
-        scores = torch.matmul(q, k.permute(0, 1, 3, 2)) / (self.head_dim ** 0.5)
-
-        # Apply the softmax activation to obtain attention weights
-        attention_weights = F.softmax(scores, dim=-1)
-
-        # Apply the attention weights to the values
-        output = torch.matmul(attention_weights, v)
-
-        # Reshape and concatenate the output from different heads
-        output = output.permute(0, 2, 1, 3).contiguous().view(batch_size, seq_len, embed_dim)
-
-        return output
-
-import dataclasses
 class Block(nn.Module):
     # create a network
     # verify by permutation
@@ -221,11 +214,7 @@ class Block(nn.Module):
         self.config = dataclasses.replace(config)
         self.config.not_causal = config.not_causal[id]
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
-        # if config.not_causal[id]:
-        #     print('using non causal attention')
-        #     self.attn = SelfAttention(config.n_embd, config.n_head)
-        # else:
-        #     print('using causal attention')
+
         self.attn = CausalSelfAttention(self.config)
 
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
@@ -248,7 +237,7 @@ class Block(nn.Module):
 
         print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe} | casual {not self.config.not_causal}")
 
-    def forward(self, x, attn_mask=None, no_c_attn=False):
+    def forward(self, x, attn_mask=None, ablation_config=dict()):
         if self.layerwise_pe:
             if self.pe_type == 'original':
                 device = x.device
@@ -261,23 +250,26 @@ class Block(nn.Module):
             elif self.pe_type == 'sin':
                 x = self.layer_wpe(x)
         
+        ln_1_fn = lambda x:x if ablation_config.get('no_ln_1', False) else self.ln_1(x)
+
         if self.no_att_residual:
-            x = self.attn(self.ln_1(x), attn_mask=attn_mask, no_c_attn=no_c_attn)
-            # x = self.attn(x)
+            x = self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
         else:
-            x = x + self.attn(self.ln_1(x), attn_mask=attn_mask, no_c_attn=no_c_attn) # original
-            # x = x + self.attn(x)
-
+            x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
         if self.permute:
             randx = torch.randperm(x.size(1)).to(x.device)
             x = x[:, randx, :]
 
+
+        ln_2_fn = lambda x:x if ablation_config.get('no_ln_2', False) else self.ln_2(x)
+        mlp_fn = lambda x:x if ablation_config.get('no_mlp', False) else self.mlp(x)
+
         if self.no_mlp_residual:
-            x = self.mlp(self.ln_2(x))
+            x = mlp_fn(ln_2_fn(x))
         else:
-            x = x + self.mlp(self.ln_2(x)) # original
+            x = x + mlp_fn(ln_2_fn(x)) # original
         
         return x
 
@@ -436,12 +428,37 @@ class GPT(nn.Module):
         return vectors, pairwise_dot_products
 
 
-    def forward(self, idx, targets=None, debug=False, causal_training=True, attn_mask=None, equal_distancing_exp=False, no_c_attn=False):
+
+    def forward(self, 
+                idx, 
+                targets=None, 
+                debug=False, 
+                causal_training=True, # 
+                attn_mask=None, # for non-causal auto-regressive training that inputs non-equal length senquence
+                equal_distancing_exp=False, # for visualization on equal distancing vectors
+                ablation_config=dict()): # for attention ablation study
+        '''
+        Forward function for the GPT model
         
+        Parameters:
+        - idx: input token indices, shape [b, t]
+        - targets: output token indices, shape [b, t]
+        - debug: whether to print debug information
+        - causal_training: whether to train in a causal or non-causal manner, both are auto-regressive. 
+        Causal training the original way to train causal transformer, but to compare with non-causal transformer, we set this to be False 
+        - attn_mask: attention mask for non-causal auto-regressive training
+        - equal_distancing_exp: whether to use equal distancing vectors
+        - ablation_config: configuration for attention ablation study
+
+        Returns:
+        - logits: output logits, shape [b, t, vocab_size]
+        - loss: loss value, only calculated when targets are provided
+        '''
+
 
         # forward the GPT model itselfs
 
-        if equal_distancing_exp:
+        if equal_distancing_exp: # override the input idx with equal distancing vectors
             L = idx.size(1)
             vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
             x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
@@ -467,9 +484,9 @@ class GPT(nn.Module):
         for bidx, block in enumerate(self.transformer.h):
             if debug:
                 print(bidx, end=' ')
-            x = block(x, attn_mask=attn_mask, no_c_attn=no_c_attn)
+            x = block(x, attn_mask=attn_mask, ablation_config=ablation_config)
             for tcidx in temp_counter:
-                if temp_counter[tcidx]['skip_count'] >= 0: # bug here (used to be >), now fixed because 
+                if temp_counter[tcidx]['skip_count'] >= 0: # bug here (used to be >), now fixed
                     temp_counter[tcidx]['skip_count'] -= 1
                 if temp_counter[tcidx]['skip_count'] == 0:
                     x = x + temp_counter[tcidx]['x']
