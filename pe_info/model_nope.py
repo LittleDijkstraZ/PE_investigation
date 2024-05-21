@@ -243,6 +243,11 @@ class Block(nn.Module):
         self.layerwise_pe = config.layerwise_pe[id]
         self.pe_type = config.layer_pe
         self.permute = config.permute[id]
+
+        if self.permute:
+            randx = torch.nn.Parameter(torch.randperm(config.block_size).to(torch.int64), requires_grad=False)
+            self.register_buffer('randx', randx)
+
         if self.layerwise_pe:
             self.block_size = config.block_size
             if config.layer_pe == 'original':
@@ -274,8 +279,8 @@ class Block(nn.Module):
             x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
         if self.permute:
-            randx = torch.randperm(x.size(1)).to(x.device)
-            x = x[:, randx, :]
+            # randx = torch.randperm(x.size(1)).to(x.device)
+            x = x[:, self.randx, :]
 
 
         ln_2_fn = lambda x:x if ablation_config.get('no_ln_2', False) else self.ln_2(x)
@@ -411,7 +416,7 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     @staticmethod
-    def create_equal_distancing_vecotrs(n, dim, small_component=0.01): # the larger the small component, the closer the vectors
+    def create_equal_distancing_vecotrs(n, dim, small_component=0.1): # the larger the small component, the closer the vectors
         # Initialize an array to store the vectors
         vectors = np.zeros((n, dim))
 
@@ -432,7 +437,7 @@ class GPT(nn.Module):
         #     vectors[:-i] += common_component
 
         # Normalize again to ensure they're all of equal length (optional depending on requirements)
-        # vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+        vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
         # shuffle the vectors
         vectors = np.random.permutation(vectors) # yes pairwise equal distancing
         # vectors = np.random.rand(n, dim) # yes, because rand actually allows close to pairwise equal distancing
