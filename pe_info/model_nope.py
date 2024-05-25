@@ -88,7 +88,7 @@ class CausalSelfAttention(nn.Module):
         else:
             print("Using Flash Attention")
         self.causal = bool(not config.not_causal)
-        # self._reset_parameters() # unfortunately, this does not help with the issue with normal attention
+        self._reset_parameters() # unfortunately, this does not help with the issue with normal attention
 
     def forward(self, x, attn_mask=None, ablation_config=dict()):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -192,9 +192,38 @@ class CausalSelfAttention(nn.Module):
         return y
     
 
-    def _reset_parameters(self, std=1):
-        nn.init.normal_(self.c_attn.weight, mean=0, std=0.02) 
-        nn.init.normal_(self.c_proj.weight, mean=0, std=0.02)
+    def _reset_parameters(self, std=0.02):
+        
+        ## random normal
+        # nn.init.normal_(self.c_attn.weight, mean=0, std=std) 
+        # nn.init.normal_(self.c_proj.weight, mean=0, std=std)
+
+        ## xavier
+        # print('xavier init')
+        # nn.init.xavier_uniform_(self.c_attn.weight)
+        # nn.init.xavier_uniform_(self.c_proj.weight)
+
+        ## kaiming
+        # print('kaiming init')
+        # nn.init.kaiming_uniform_(self.c_attn.weight, a=math.sqrt(5))
+        # nn.init.kaiming_uniform_(self.c_proj.weight, a=math.sqrt(5))
+
+        ## orthogonal
+        # print('orthogonal init')
+        # nn.init.orthogonal_(self.c_attn.weight)
+        # nn.init.orthogonal_(self.c_proj.weight)
+
+        ## uniform
+        # print('uniform init')
+        # nn.init.uniform_(self.c_attn.weight, 0.5, 0.6)
+        # nn.init.uniform_(self.c_proj.weight, 0.5, 0.6)
+
+        ## constant
+        # print('constant init')
+        # nn.init.constant_(self.c_attn.weight, 0.5)
+        # print(self.c_attn.weight)
+        # nn.init.constant_(self.c_proj.weight, 0.5)
+
         return 
 
 
@@ -245,8 +274,12 @@ class Block(nn.Module):
         self.permute = config.permute[id]
 
         if self.permute:
-            randx = torch.nn.Parameter(torch.randperm(config.block_size).to(torch.int64), requires_grad=False)
-            self.register_buffer('randx', randx)
+            # randx = torch.nn.Parameter(torch.randperm(config.block_size).to(torch.int64), requires_grad=False)
+            self.randx = [torch.nn.Parameter(torch.randperm(i).to(torch.long), requires_grad=False) for i in range(config.block_size+1)]
+
+            self.res1_weight = nn.Parameter(torch.ones(1), requires_grad=True)
+            self.res2_weight = nn.Parameter(torch.ones(1), requires_grad=True)
+      
 
         if self.layerwise_pe:
             self.block_size = config.block_size
@@ -276,11 +309,15 @@ class Block(nn.Module):
             x = self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
         else:
-            x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
+            if self.permute:
+                # print(len(self.randx), x.shape)
+                randx = self.randx[x.size(1)].to(x.device)
+                x = self.res2_weight*x[:, randx, :] + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
+            else: # go normally
+                x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
-        if self.permute:
             # randx = torch.randperm(x.size(1)).to(x.device)
-            x = x[:, self.randx, :]
+            # x = x[:, self.randx, :]
 
 
         ln_2_fn = lambda x:x if ablation_config.get('no_ln_2', False) else self.ln_2(x)
@@ -289,7 +326,11 @@ class Block(nn.Module):
         if self.no_mlp_residual:
             x = mlp_fn(ln_2_fn(x))
         else:
-            x = x + mlp_fn(ln_2_fn(x)) # original
+            if self.permute:
+                randx = self.randx[x.size(1)].to(x.device)
+                x = self.res2_weight* x[:, randx, :] + mlp_fn(ln_2_fn(x))
+            else:
+                x = x + mlp_fn(ln_2_fn(x)) # original
         
         return x
 
@@ -419,10 +460,12 @@ class GPT(nn.Module):
     def create_equal_distancing_vecotrs(n, dim, small_component=0.1): # the larger the small component, the closer the vectors
         # Initialize an array to store the vectors
         vectors = np.zeros((n, dim))
-
+        one_locations = np.random.permutation(dim)[:n]
         # Generate orthogonal vectors (for simplicity, using an identity matrix for the first n vectors)
-        for i in range(n):
-            vectors[i, i] = 1
+        for row, col in enumerate(one_locations):
+            vectors[row, col] = 1
+        
+        
 
         # Normalize the vectors to have a norm of 1 (this step is optional and depends on the desired property)
         vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
@@ -451,11 +494,13 @@ class GPT(nn.Module):
 
     def forward(self, 
                 idx, 
-                targets=None, 
-                debug=False, 
-                causal_training=True, # 
+                targets=None, # put a target here during training
+                debug=False,  
+                causal_training=True, # the original trainijng method is causal, meaning the whole shifted input will be used as target 
                 attn_mask=None, # for non-causal auto-regressive training that inputs non-equal length senquence
+
                 equal_distancing_exp=False, # for visualization on equal distancing vectors
+                direct_input_modification=False, # let the input skip the embedding and directly go to the first attention layer, for visualization
                 ablation_config=dict()): # for attention ablation study
         '''
         Forward function for the GPT model
@@ -478,27 +523,30 @@ class GPT(nn.Module):
 
         # forward the GPT model itselfs
 
-        if equal_distancing_exp: # override the input idx with equal distancing vectors
-            L = idx.size(1)
-            vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
-            x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
-            
-        else: # go normally
-            ## Nope
-            tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-            if self.config.use_pe == 'original':
-                device = idx.device
-                b, t = idx.size()
-                assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-                pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
-                pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
-                x = tok_emb + pos_emb
-            elif self.config.use_pe == 'sin':
-                x = self.transformer.wpe(tok_emb)
-            else:
-                x = tok_emb
+        if not direct_input_modification:
+            if equal_distancing_exp: # override the input idx with equal distancing vectors
+                L = idx.size(1)
+                vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
+                x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
+                
+            else: # go normally
+                ## Nope
+                tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+                if self.config.use_pe == 'original':
+                    device = idx.device
+                    b, t = idx.size()
+                    assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
+                    pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+                    pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+                    x = tok_emb + pos_emb
+                elif self.config.use_pe == 'sin':
+                    x = self.transformer.wpe(tok_emb)
+                else:
+                    x = tok_emb
 
-        x = self.transformer.drop(x)
+            x = self.transformer.drop(x)
+        else:
+            x = idx # the idx now should be a sequence of vectors
 
         temp_counter = {}
         for bidx, block in enumerate(self.transformer.h):
@@ -646,6 +694,15 @@ class GPT(nn.Module):
                 elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
                     # weights of blacklist modules will NOT be weight decayed
                     no_decay.add(fpn)
+                # elif isinstance(m, torch.nn.Parameter):
+                #     no_decay.add(fpn)
+                elif pn.endswith('_weight'): # for res1, res2 weight params
+                    no_decay.add(fpn)
+
+                #     print('mn:', mn)
+                #     print('pn:', pn)
+                #     print(pn.endswith('weight'))
+                #     print(isinstance(m, blacklist_weight_modules))
 
         # subtle: 'transformer.wte.weight' and 'lm_head.weight' are tied, so they
         # will appear in the no_decay and decay sets respectively after the above.

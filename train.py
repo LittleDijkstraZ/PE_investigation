@@ -138,7 +138,9 @@ not_causal = False
 causal_training=True
 non_causal_fix_length = None
 save_best_loss = True
-autoregressive_training=False
+autoregressive_training = False # a mode that make the model do auto-regressive training on only the answer part of the equation
+save_all_intermediate = False # save all intermediate checkpoints
+
 
 if __name__ == "__main__":
     # -----------------------------------------------------------------------------
@@ -758,12 +760,13 @@ if __name__ == "__main__":
                 if iter_num > 0:
                     print(f"saving checkpoint to {out_dir}/{ckpt_path_name}")
                     torch.save(checkpoint, os.path.join(out_dir, ckpt_path_name.split('.pt')[0]+'_ppl.pt'))
-            if eval_addition and test_accuracy > best_accuracy:
+            if eval_addition and ((test_accuracy > best_accuracy) or save_all_intermediate):
                 best_accuracy = test_accuracy
                 checkpoint['best_accuracy'] = best_accuracy
                 if iter_num > 0:
                     print(f"saving checkpoint to {out_dir}/{ckpt_path_name}")
-                    torch.save(checkpoint, os.path.join(out_dir, ckpt_path_name.split('.pt')[0]+'_acc.pt'))
+                    ending = '_acc.pt' if not save_all_intermediate else f'_acc_{iter_num}.pt'
+                    torch.save(checkpoint, os.path.join(out_dir, ckpt_path_name.split('.pt')[0]+ending))
             if eval_addition_ar and test_accuracy_ar > best_accuracy_ar or always_save_checkpoint:
                 best_accuracy_ar = test_accuracy_ar
                 checkpoint['best_accuracy_ar'] = best_accuracy_ar
