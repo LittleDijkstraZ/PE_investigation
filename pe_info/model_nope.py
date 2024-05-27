@@ -12,9 +12,7 @@ import math
 import inspect
 import dataclasses
 from dataclasses import dataclass
-from venv import create
 
-from sqlalchemy import func
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -69,8 +67,13 @@ class CausalSelfAttention(nn.Module):
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+
+        self.identity = nn.Identity() # this is only for helping to take out the results after attention through forward hook
+
         # output projection
         self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+
+
         # regularization
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
@@ -88,7 +91,7 @@ class CausalSelfAttention(nn.Module):
         else:
             print("Using Flash Attention")
         self.causal = bool(not config.not_causal)
-        self._reset_parameters() # unfortunately, this does not help with the issue with normal attention
+        self._reset_parameters() 
 
     def forward(self, x, attn_mask=None, ablation_config=dict()):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -188,6 +191,7 @@ class CausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
 
         # output projection
+        y = self.identity(y)
         y = self.resid_dropout(self.c_proj(y))
         return y
     
@@ -272,14 +276,22 @@ class Block(nn.Module):
         self.layerwise_pe = config.layerwise_pe[id]
         self.pe_type = config.layer_pe
         self.permute = config.permute[id]
+        self.permute_length = config.permute_length
 
         if self.permute:
             # randx = torch.nn.Parameter(torch.randperm(config.block_size).to(torch.int64), requires_grad=False)
-            self.randx = [torch.nn.Parameter(torch.randperm(i).to(torch.long), requires_grad=False) for i in range(config.block_size+1)]
-
+            # self.randx = [torch.nn.Parameter(torch.randperm(i).to(torch.long), requires_grad=False) for i in range(config.block_size+1)]
+            if self.permute == 'shuffle':
+                perm_idx = torch.hstack([torch.randperm(self.permute_length), torch.arange(self.permute_length, config.block_size+1)]).to(torch.long)
+                self.register_buffer('randx', perm_idx)
+            if self.permute == 'remove':
+                voids = torch.zeros(1, self.permute_length, self.config.n_embd)
+                self.register_buffer('voids', voids)
+                
             self.res1_weight = nn.Parameter(torch.ones(1), requires_grad=True)
             self.res2_weight = nn.Parameter(torch.ones(1), requires_grad=True)
-      
+
+
 
         if self.layerwise_pe:
             self.block_size = config.block_size
@@ -311,8 +323,37 @@ class Block(nn.Module):
         else:
             if self.permute:
                 # print(len(self.randx), x.shape)
-                randx = self.randx[x.size(1)].to(x.device)
-                x = self.res2_weight*x[:, randx, :] + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
+                ## randperm
+                # randx = self.randx[x.size(1)].to(x.device)
+                # x_skip = self.res2_weight*x[:, randx, :]
+
+                ## fully connected
+                # x_skip = torch.mean(x, dim=1, keepdim=True)
+                # x_skip = self.res1_weight * torch.repeat_interleave(x_skip, x.size(1), dim=1)
+
+                ## all goes to the first
+                if self.permute == True:
+                    if self.permute_length != None:
+                        x_skip = torch.mean(x[:, :self.permute_length, :], dim=1, keepdim=True)
+                    else:
+                        x_skip = torch.mean(x, dim=1, keepdim=True)
+                    all_zeros = torch.zeros_like(x)
+                    all_zeros[:, 0:1, :] += self.res1_weight * x_skip
+                    x_skip = all_zeros
+                elif self.permute == 'shuffle':
+                    if x.size(1) > self.permute_length:
+                        randx = self.randx[:x.size(1)]
+                        x_skip = self.res1_weight * x[:, randx, :]
+                    else:
+                        x_skip = self.res1_weight * x
+                elif self.permute == 'remove':
+                    if x.size(1) > self.permute_length:
+                        x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
+                    else:
+                        x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
+                    x_skip = self.res1_weight * x_skip    
+
+                x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
             else: # go normally
                 x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
@@ -327,14 +368,38 @@ class Block(nn.Module):
             x = mlp_fn(ln_2_fn(x))
         else:
             if self.permute:
-                randx = self.randx[x.size(1)].to(x.device)
-                x = self.res2_weight* x[:, randx, :] + mlp_fn(ln_2_fn(x))
+                # randx = self.randx[x.size(1)].to(x.device)
+                # x_skip = torch.mean(x, dim=1, keepdim=True)
+                # x_skip = self.res2_weight * torch.repeat_interleave(x_skip, x.size(1), dim=1)
+
+                ## all goes to the first
+                if self.permute == True:
+                    x_skip = torch.mean(x, dim=1, keepdim=True)
+                    all_zeros = torch.zeros_like(x)
+                    all_zeros[:, 0:1, :] += self.res2_weight * x_skip
+                    x_skip = all_zeros
+                elif self.permute == 'shuffle':
+                    if x.size(1) > self.permute_length:
+                        
+                        randx = self.randx[:x.size(1)]
+                        x_skip = self.res2_weight * x[:, randx, :]
+                    else:
+                        x_skip = self.res2_weight * x
+                elif self.permute == 'remove':
+                    if x.size(1) > self.permute_length:
+                        x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
+                    else:
+                        x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
+                    x_skip = self.res2_weight * x_skip    
+
+                x = x_skip + mlp_fn(ln_2_fn(x))
             else:
                 x = x + mlp_fn(ln_2_fn(x)) # original
         
         return x
 
 from typing import Any
+
 
 @dataclass
 class GPTConfig:
@@ -353,21 +418,27 @@ class GPTConfig:
     layerwise_pe: bool = False
     layer_pe: str = 'original' # [original, sin]
     permute: bool = False
+    permute_length: int = None
     not_causal: bool = False
     # add a deterministic option...
     
 
-def handle_redisual(config, key):
-    attr_per_layer = np.zeros(config.n_layer)
+def handle_list(config, key):
     if hasattr(config, key):
         attr = config.__getattribute__(key)
+        attr_per_layer = np.zeros(config.n_layer)
+          
         if type(attr) is list:
-            for n in attr:
-                attr_per_layer[n] += 1 # this allows double skip
+            if str in [type(a) for a in attr]:
+                assert len(attr) == config.n_layer, f"Length of {key} should be equal to n_layer"
+                attr_per_layer = attr
+            else:
+                for n in attr:
+                    attr_per_layer[n] += 1 # this allows double skip for residual connections
         elif type(attr) is int:
             attr_per_layer[:attr] = 1
         else:
-            assert type(attr) is bool, "need to have id to use integer or "
+            assert type(attr) is bool, f" {attr} {type(attr)} need to have id to use integer or "
             attr_per_layer = attr_per_layer + int(attr)
     return list(attr_per_layer)
 
@@ -379,12 +450,12 @@ class GPT(nn.Module):
         assert config.vocab_size is not None
         assert config.block_size is not None
 
-        config.use_residual = handle_redisual(config, 'use_residual')
-        config.no_att_residual = handle_redisual(config, 'no_att_residual')
-        config.no_mlp_residual = handle_redisual(config, 'no_mlp_residual')
-        config.layerwise_pe = handle_redisual(config, 'layerwise_pe')
-        config.permute = handle_redisual(config, 'permute')
-        config.not_causal = handle_redisual(config, 'not_causal')
+        config.use_residual = handle_list(config, 'use_residual')
+        config.no_att_residual = handle_list(config, 'no_att_residual')
+        config.no_mlp_residual = handle_list(config, 'no_mlp_residual')
+        config.layerwise_pe = handle_list(config, 'layerwise_pe')
+        config.permute = handle_list(config, 'permute')
+        config.not_causal = handle_list(config, 'not_causal')
 
         transformer = dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),

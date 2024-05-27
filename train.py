@@ -133,7 +133,10 @@ no_att_residual = False
 no_mlp_residual = False
 layerwise_pe = False
 permute = False
+permute_length = None
 not_causal = False
+
+
 
 causal_training=True
 non_causal_fix_length = None
@@ -442,8 +445,9 @@ if __name__ == "__main__":
                     no_mlp_residual=no_mlp_residual,
                     layerwise_pe=layerwise_pe,
                     permute=permute,
+                    permute_length=permute_length,
                     not_causal=not_causal
-                    ) # jason's change 
+                ) # jason's change 
 
     # start with model_args from command line
     if init_from == 'scratch':

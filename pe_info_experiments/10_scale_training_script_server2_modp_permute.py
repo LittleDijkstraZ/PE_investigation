@@ -6,6 +6,7 @@ import pandas as pd
 from functools import partial
 
 from sympy import use
+from torch import permute
 
 
 def run_training(out_name,
@@ -46,7 +47,7 @@ def run_training(out_name,
         # 'learning_rate': kwargs['learning_rate'] if 'learning_rate' in kwargs else 0.0002644, # 0126 try to preven rank degen
         # 'warmup_iters': kwargs['max_iters']*0.1 if 'max_iters' in kwargs else 400,
 
-
+        'permute_length': kwargs['permute_length'] if 'permute_length' in kwargs else None,
         'use_residual': kwargs['use_residual'],
         'layerwise_pe': kwargs['layerwise_pe'],
         'permute': kwargs['permute'] if 'permute' in kwargs else False, 
@@ -84,7 +85,15 @@ def run_training(out_name,
     # Construct the command using parameters from the dictionary
     layerwise_pe_repr = '['+','.join(map(str,params['layerwise_pe']))+']' if type(params['layerwise_pe']) is list else str(params['layerwise_pe'])
     use_residual_repr = '['+','.join(map(str,params['use_residual']))+']' if type(params['use_residual']) is list else str(params['use_residual'])
-    permute_repr = '['+','.join(map(str,params['permute']))+']' if type(params['permute']) is list else str(params['permute'])
+    if str in [type(i) for i in params['permute']]:
+        permute_repr = '['
+        for i in params['permute']:
+            permute_repr += str(i) if type(i)!=str else "\\"+"'"+i+"\\"+"'"
+            permute_repr += ','
+        permute_repr += ']'
+    else:
+        permute_repr = '['+','.join(map(str,params['permute']))+']' if type(params['permute']) is list else str(params['permute'])
+    print(permute_repr)
     not_casual_repr = '['+','.join(map(str,params['not_causal']))+']' if type(params['not_causal']) is list else str(params['not_causal'])
     command_params = {
         'use_pe': params['pe_type'],
@@ -93,6 +102,7 @@ def run_training(out_name,
         'lr_decay_iters': params['lr_decay_iters'],
         'layerwise_pe': layerwise_pe_repr,
         'permute': permute_repr,
+        'permute_length': params['permute_length'],
         'general_seed': params['general_seed'],
         'not_causal': not_casual_repr,
         'out_dir': output_directory,
@@ -191,13 +201,18 @@ if __name__ == "__main__":
     #     + [[i for i in range(6)]]
 
     '''for permute but not losing rescon'''
-    use_residual_list_all = [[0], [2], [0,1], [1, 2], [0, 1, 2]]
+    use_residual_list_all = [[0], [2], [0,1], [1,2], [0, 1, 2], [3, 4, 5], [0,1,2,3,4], [0,1,2,3,4,5]]
     # use_residual_list_all = [[i for i in range(6) if i not in j] for j in use_residual_list_all]
 
     commands_dict = {
         # "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
         "add3_nc": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
         "add3": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_shuffle": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_shuffle_6": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_remove_8": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+
+
 
         "mod3" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
         "mod3_nc" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
@@ -216,7 +231,7 @@ if __name__ == "__main__":
     for seed in seeds:
 
         # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
-        for choice in ["add3"]:
+        for choice in ["add3_remove_8"]:
             # choice = "mod3_nc"
             causal_training = True
             autoregressive_training = False
@@ -266,8 +281,14 @@ if __name__ == "__main__":
                 # for use_pe in ['nope', 'original']: # 'original''nope',
                 # for use_pe in ['original', 'nope']: # 'original''nope',
                 # for use_pe in ['nope']: # 'original''nope',
+                n_layers = 6
                 for use_pe in ['original', 'nope']: # 'original''nope',
-
+                    if 'shuffle' in choice:
+                        permuteMap = lambda use_residual_list: ["shuffle" if l in use_residual_list else 0 for l in range(n_layers)]
+                    elif 'remove' in choice:
+                        permuteMap = lambda use_residual_list: ["remove" if l in use_residual_list else 0 for l in range(n_layers)]
+                    else:
+                        permuteMap = lambda use_residual_list: use_residual_list
 
                     out_name = f"{choice}_nope_residual_exp" if use_pe=='nope' else f"{choice}_residual_exp" # out4_1203 causal didn't converge.
                     os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
@@ -293,7 +314,8 @@ if __name__ == "__main__":
                         'save_best_loss': False,
                         'save_final': False,
                         'autoregressive_training': autoregressive_training,
-                        'permute': use_residual_list[i], # for permute, set the layers to be permuted
+                        'permute': permuteMap(use_residual_list[i]), # for permute, set the layers to be permuted
+                        'permute_length': 8,
                         'save_all_intermediate': True,
 
                         # 'no_att_residual': no_att_residual_list[i],
