@@ -181,6 +181,10 @@ class CausalSelfAttention(nn.Module):
                 att = att / attn_sum
             elif func_config=='nodiv':
                 att = att
+            elif func_config=='same':
+                print('using same')
+                att = torch.ones_like(att).to(att.device)
+                att = att / att.sum(dim=-1, keepdim=True)
 
 
                 
@@ -251,6 +255,7 @@ class MLP(nn.Module):
         nn.init.normal_(self.c_proj.weight)
         return 
 
+from functools import partial
 
 class Block(nn.Module):
     # create a network
@@ -278,6 +283,8 @@ class Block(nn.Module):
         self.permute = config.permute[id]
         self.permute_length = config.permute_length
 
+        self.permute_func = partial(self.permute_func_base, permute_type=self.permute, permute_length=self.permute_length)
+
         if self.permute:
             # randx = torch.nn.Parameter(torch.randperm(config.block_size).to(torch.int64), requires_grad=False)
             # self.randx = [torch.nn.Parameter(torch.randperm(i).to(torch.long), requires_grad=False) for i in range(config.block_size+1)]
@@ -290,6 +297,7 @@ class Block(nn.Module):
                 
             self.res1_weight = nn.Parameter(torch.ones(1), requires_grad=True)
             self.res2_weight = nn.Parameter(torch.ones(1), requires_grad=True)
+            self.res_weights = [self.res1_weight, self.res2_weight]
 
 
 
@@ -302,7 +310,42 @@ class Block(nn.Module):
 
         print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe} | casual {not self.config.not_causal}")
 
-    def forward(self, x, attn_mask=None, ablation_config=dict()):
+    def permute_func_base(self, x, res_weight_id, permute_type, permute_length):
+        if permute_type:
+            res_weight = self.res_weights[res_weight_id]
+            if permute_type == True:
+                if permute_length != None:
+                    x_skip = torch.mean(x[:, :permute_length, :], dim=1, keepdim=True)
+                else:
+                    x_skip = torch.mean(x, dim=1, keepdim=True)
+                all_zeros = torch.zeros_like(x)
+                all_zeros[:, 0:1, :] += res_weight* x_skip
+                x_skip = all_zeros
+            elif permute_type == 'shuffle':
+                if x.size(1) > permute_length:
+                    randx = self.randx[:x.size(1)]
+                    x_skip = res_weight* x[:, randx, :]
+                else:
+                    x_skip = res_weight* x
+            elif permute_type == 'remove':
+                if x.size(1) > permute_length:
+                    x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, permute_length:, :]], dim=1)
+                else:
+                    x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
+                x_skip = res_weight* x_skip    
+        else: # go normally
+            x_skip = x
+        return x_skip 
+
+
+    def forward(self, 
+                x, 
+                attn_mask=None, 
+                ablation_config=dict() # this will only be used during visualization for testing different operations
+                ):
+
+
+
         if self.layerwise_pe:
             if self.pe_type == 'original':
                 device = x.device
@@ -321,42 +364,36 @@ class Block(nn.Module):
             x = self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
         else:
-            if self.permute:
-                # print(len(self.randx), x.shape)
-                ## randperm
-                # randx = self.randx[x.size(1)].to(x.device)
-                # x_skip = self.res2_weight*x[:, randx, :]
+            x_skip = self.permute_func(x, res_weight_id=0)
+            x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
+            # if self.permute:
+      
+            #     if self.permute == True:
+            #         if self.permute_length != None:
+            #             x_skip = torch.mean(x[:, :self.permute_length, :], dim=1, keepdim=True)
+            #         else:
+            #             x_skip = torch.mean(x, dim=1, keepdim=True)
+            #         all_zeros = torch.zeros_like(x)
+            #         all_zeros[:, 0:1, :] += self.res1_weight * x_skip
+            #         x_skip = all_zeros
+            #     elif self.permute == 'shuffle':
+            #         if x.size(1) > self.permute_length:
+            #             randx = self.randx[:x.size(1)]
+            #             x_skip = self.res1_weight * x[:, randx, :]
+            #         else:
+            #             x_skip = self.res1_weight * x
+            #     elif self.permute == 'remove':
+            #         if x.size(1) > self.permute_length:
+            #             x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
+            #         else:
+            #             x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
+            #         x_skip = self.res1_weight * x_skip    
 
-                ## fully connected
-                # x_skip = torch.mean(x, dim=1, keepdim=True)
-                # x_skip = self.res1_weight * torch.repeat_interleave(x_skip, x.size(1), dim=1)
+            #     x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
+            # else: # go normally
+            #     x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
 
-                ## all goes to the first
-                if self.permute == True:
-                    if self.permute_length != None:
-                        x_skip = torch.mean(x[:, :self.permute_length, :], dim=1, keepdim=True)
-                    else:
-                        x_skip = torch.mean(x, dim=1, keepdim=True)
-                    all_zeros = torch.zeros_like(x)
-                    all_zeros[:, 0:1, :] += self.res1_weight * x_skip
-                    x_skip = all_zeros
-                elif self.permute == 'shuffle':
-                    if x.size(1) > self.permute_length:
-                        randx = self.randx[:x.size(1)]
-                        x_skip = self.res1_weight * x[:, randx, :]
-                    else:
-                        x_skip = self.res1_weight * x
-                elif self.permute == 'remove':
-                    if x.size(1) > self.permute_length:
-                        x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
-                    else:
-                        x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
-                    x_skip = self.res1_weight * x_skip    
-
-                x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-            else: # go normally
-                x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-
+            
             # randx = torch.randperm(x.size(1)).to(x.device)
             # x = x[:, self.randx, :]
 
@@ -367,34 +404,36 @@ class Block(nn.Module):
         if self.no_mlp_residual:
             x = mlp_fn(ln_2_fn(x))
         else:
-            if self.permute:
-                # randx = self.randx[x.size(1)].to(x.device)
-                # x_skip = torch.mean(x, dim=1, keepdim=True)
-                # x_skip = self.res2_weight * torch.repeat_interleave(x_skip, x.size(1), dim=1)
+            x_skip = self.permute_func(x, res_weight_id=1)
+            x = x_skip + mlp_fn(ln_2_fn(x))
+            # if self.permute:
+            #     # randx = self.randx[x.size(1)].to(x.device)
+            #     # x_skip = torch.mean(x, dim=1, keepdim=True)
+            #     # x_skip = self.res2_weight * torch.repeat_interleave(x_skip, x.size(1), dim=1)
 
-                ## all goes to the first
-                if self.permute == True:
-                    x_skip = torch.mean(x, dim=1, keepdim=True)
-                    all_zeros = torch.zeros_like(x)
-                    all_zeros[:, 0:1, :] += self.res2_weight * x_skip
-                    x_skip = all_zeros
-                elif self.permute == 'shuffle':
-                    if x.size(1) > self.permute_length:
+            #     ## all goes to the first
+            #     if self.permute == True:
+            #         x_skip = torch.mean(x, dim=1, keepdim=True)
+            #         all_zeros = torch.zeros_like(x)
+            #         all_zeros[:, 0:1, :] += self.res2_weight * x_skip
+            #         x_skip = all_zeros
+            #     elif self.permute == 'shuffle':
+            #         if x.size(1) > self.permute_length:
                         
-                        randx = self.randx[:x.size(1)]
-                        x_skip = self.res2_weight * x[:, randx, :]
-                    else:
-                        x_skip = self.res2_weight * x
-                elif self.permute == 'remove':
-                    if x.size(1) > self.permute_length:
-                        x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
-                    else:
-                        x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
-                    x_skip = self.res2_weight * x_skip    
+            #             randx = self.randx[:x.size(1)]
+            #             x_skip = self.res2_weight * x[:, randx, :]
+            #         else:
+            #             x_skip = self.res2_weight * x
+            #     elif self.permute == 'remove':
+            #         if x.size(1) > self.permute_length:
+            #             x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
+            #         else:
+            #             x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
+            #         x_skip = self.res2_weight * x_skip    
 
-                x = x_skip + mlp_fn(ln_2_fn(x))
-            else:
-                x = x + mlp_fn(ln_2_fn(x)) # original
+            #     x = x_skip + mlp_fn(ln_2_fn(x))
+            # else:
+            #     x = x + mlp_fn(ln_2_fn(x)) # original
         
         return x
 
@@ -457,6 +496,14 @@ class GPT(nn.Module):
         config.permute = handle_list(config, 'permute')
         config.not_causal = handle_list(config, 'not_causal')
 
+
+        if not hasattr(config, 'use_pe'):
+            config.use_pe = 'nope'
+
+        if config.use_pe == 'nope': 
+            config.layerwise_pe = [0]*config.n_layer     
+
+
         transformer = dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             # wpe = nn.Embedding(config.block_size, config.n_embd), ## Nope
@@ -464,15 +511,14 @@ class GPT(nn.Module):
             h = nn.ModuleList([Block(config, id=id) for id in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
         )
-        if hasattr(config, 'use_pe'):
-            if config.use_pe == 'original':
-                transformer['wpe'] = nn.Embedding(config.block_size, config.n_embd)
-            elif config.use_pe == 'nope':
-                pass
-            elif config.use_pe == 'sin':
-                transformer['wpe'] = SinusoidalPositionalEncoding(config.n_embd, config.block_size)
-        else:
-            config.use_pe = 'nope'                
+
+        if config.use_pe == 'original':
+            transformer['wpe'] = nn.Embedding(config.block_size, config.n_embd)
+        elif config.use_pe == 'nope':
+            pass
+        elif config.use_pe == 'sin':
+            transformer['wpe'] = SinusoidalPositionalEncoding(config.n_embd, config.block_size)
+                    
         print(f'PE in use: {config.use_pe}')
         self.transformer = nn.ModuleDict(transformer)
 
