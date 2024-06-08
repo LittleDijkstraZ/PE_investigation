@@ -17,6 +17,83 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+class RelativePositionBias(nn.Module):
+    def __init__(self, bidirectional=False, num_buckets=32, max_distance=128, n_heads=2):
+        super(RelativePositionBias, self).__init__()
+        self.bidirectional = bidirectional
+        self.num_buckets = num_buckets
+        self.max_distance = max_distance
+        self.n_heads = n_heads
+        self.relative_attention_bias = nn.Embedding(self.num_buckets, self.n_heads)
+
+    @staticmethod
+    def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
+        """
+        Adapted from Mesh Tensorflow:
+        https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
+
+        Translate relative position to a bucket number for relative attention. The relative position is defined as
+        memory_position - query_position, i.e. the distance in tokens from the attending position to the attended-to
+        position. If bidirectional=False, then positive relative positions are invalid. We use smaller buckets for
+        small absolute relative_position and larger buckets for larger absolute relative_positions. All relative
+        positions >=max_distance map to the same bucket. All relative positions <=-max_distance map to the same bucket.
+        This should allow for more graceful generalization to longer sequences than the model has been trained on
+
+        Args:
+            relative_position: an int32 Tensor
+            bidirectional: a boolean - whether the attention is bidirectional
+            num_buckets: an integer
+            max_distance: an integer
+
+        Returns:
+            a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
+        """
+        relative_buckets = 0
+        if bidirectional:
+            num_buckets //= 2
+            relative_buckets += (relative_position > 0).to(torch.long) * num_buckets
+            relative_position = torch.abs(relative_position)
+        else:
+            relative_position = -torch.min(relative_position, torch.zeros_like(relative_position))
+        # now relative_position is in the range [0, inf)
+
+        # half of the buckets are for exact increments in positions
+        max_exact = num_buckets // 2
+        is_small = relative_position < max_exact
+
+        # The other half of the buckets are for logarithmically bigger bins in positions up to max_distance
+        relative_postion_if_large = max_exact + (
+            torch.log(relative_position.float() / max_exact)
+            / math.log(max_distance / max_exact)
+            * (num_buckets - max_exact)
+        ).to(torch.long)
+        relative_postion_if_large = torch.min(
+            relative_postion_if_large, torch.full_like(relative_postion_if_large, num_buckets - 1)
+        )
+
+        relative_buckets += torch.where(is_small, relative_position, relative_postion_if_large)
+        return relative_buckets
+
+    def compute_bias(self, query_length, key_length):
+        """Compute binned relative position bias"""
+        context_position = torch.arange(
+            query_length, dtype=torch.long, device=self.relative_attention_bias.weight.device
+        )[:, None]
+        memory_position = torch.arange(
+            key_length, dtype=torch.long, device=self.relative_attention_bias.weight.device
+        )[None, :]
+        relative_position = memory_position - context_position  # shape (query_length, key_length)
+        relative_position_bucket = self._relative_position_bucket(
+            relative_position,  # shape (query_length, key_length)
+            bidirectional=self.bidirectional,
+            num_buckets=self.num_buckets,
+        )
+        values = self.relative_attention_bias(relative_position_bucket)  # shape (query_length, key_length, num_heads)
+        values = values.permute([2, 0, 1]).unsqueeze(0)  # shape (1, num_heads, query_length, key_length)
+        return values
+
+    def forward(self, qlen, klen):
+        return self.compute_bias(qlen, klen)  # shape (1, num_heads, qlen, klen)
 
 class SinusoidalPositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
@@ -60,11 +137,23 @@ class LayerNorm(nn.Module):
     def forward(self, input):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
+
+from rotary_embedding_torch import RotaryEmbedding
+
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
         assert config.n_embd % config.n_head == 0
+
+        if config.layer_pe == 'rotary':
+            self.rotary_emb = RotaryEmbedding(config.n_embd // config.n_head,
+                                              freqs_for='lang')
+            print('rotary in use')
+        elif config.layer_pe == 'T5':
+            self.relative_emb = RelativePositionBias(max_distance=config.block_size ,n_heads=config.n_head)
+            print('T5 in use')
+
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
 
@@ -90,8 +179,10 @@ class CausalSelfAttention(nn.Module):
                                         .view(1, 1, config.block_size, config.block_size))
         else:
             print("Using Flash Attention")
+        
         self.causal = bool(not config.not_causal)
         self._reset_parameters() 
+        self.config = config
 
     def forward(self, x, attn_mask=None, ablation_config=dict()):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -117,6 +208,15 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
+        if self.config.layer_pe == 'rotary':
+            q = self.rotary_emb.rotate_queries_or_keys(q)
+            k = self.rotary_emb.rotate_queries_or_keys(k)
+        elif self.config.layer_pe == 'T5':
+            if attn_mask is None:
+                attn_mask = self.relative_emb(T, T) 
+            else:
+                attn_mask = attn_mask + self.relative_emb(T, T)
+            
         if attn_mask is not None:
             attn_mask = torch.repeat_interleave(attn_mask.unsqueeze(1), self.n_head, dim=1) # (B, nh, T, T)
 
@@ -129,9 +229,14 @@ class CausalSelfAttention(nn.Module):
                     y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
                 else: # since torch doeds not allow setting both attn_mask and is_causal, we have to do it manually
                     temp_mask = torch.ones(1, 1, T, T, dtype=torch.bool).tril(diagonal=0).to(attn_mask.device)
-                    diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device)
-                    attn_mask = attn_mask & temp_mask
-                    attn_mask = attn_mask | diag_mask
+                    # diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device)
+                    if attn_mask.dtype == torch.bool:
+                        attn_mask = attn_mask & temp_mask
+                        # attn_mask = attn_mask | diag_mask
+                    else:
+                        attn_mask = attn_mask.masked_fill(temp_mask == 0, float('-inf'))
+                        attn_mask = attn_mask[0,0]
+                        # attn_mask = attn_mask.masked_fill(diag_mask == 0, float('-inf'))
                     y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout if self.training else 0)
 
             else:
@@ -191,7 +296,7 @@ class CausalSelfAttention(nn.Module):
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
 
-            
+        
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
 
         # output projection
@@ -266,8 +371,11 @@ class Block(nn.Module):
         super().__init__()
         self.config = dataclasses.replace(config)
         self.config.not_causal = config.not_causal[id]
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.layerwise_pe = config.layerwise_pe[id]
 
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        
+        self.config.layer_pe = config.layer_pe if self.layerwise_pe else None
         self.attn = CausalSelfAttention(self.config)
 
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
@@ -278,7 +386,6 @@ class Block(nn.Module):
         self.use_residual = config.use_residual[id]
         self.no_att_residual = config.no_att_residual[id] if self.use_residual else True
         self.no_mlp_residual = config.no_mlp_residual[id] if self.use_residual else True
-        self.layerwise_pe = config.layerwise_pe[id]
         self.pe_type = config.layer_pe
         self.permute = config.permute[id]
         self.permute_length = config.permute_length
@@ -307,6 +414,7 @@ class Block(nn.Module):
                 self.layer_wpe = nn.Embedding(self.block_size, config.n_embd)
             elif config.layer_pe == 'sin':
                 self.layer_wpe = SinusoidalPositionalEncoding(config.n_embd, self.block_size)
+          
 
         print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe} | casual {not self.config.not_causal}")
 
@@ -480,6 +588,7 @@ def handle_list(config, key):
             assert type(attr) is bool, f" {attr} {type(attr)} need to have id to use integer or "
             attr_per_layer = attr_per_layer + int(attr)
     return list(attr_per_layer)
+
 
 import numpy as np
 class GPT(nn.Module):
@@ -813,7 +922,7 @@ class GPT(nn.Module):
                     no_decay.add(fpn)
                 # elif isinstance(m, torch.nn.Parameter):
                 #     no_decay.add(fpn)
-                elif pn.endswith('_weight'): # for res1, res2 weight params
+                elif pn.endswith('_weight') or pn.endswith('freqs') or 'RelativePositionBias' in pn: # for res1, res2 weight params; 'freqs' for rotary embeddings
                     no_decay.add(fpn)
 
                 #     print('mn:', mn)
