@@ -180,7 +180,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
     #     + [[i for i in range(6) if i not in [j, j+1]] for j in range(5)] \
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
-    #     + [[i for i in range(6)]]
+    #     + [[i for i in range(6)]]s
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
     seeds = [240+i for i in range(0, 1)]
 
@@ -200,7 +200,9 @@ if __name__ == "__main__":
 
     '''for permute but not losing rescon'''
     # use_residual_list_all = [[0], [2], [0,1], [1,2], [0, 1, 2], [3, 4, 5], [0,1,2,3,4], [0,1,2,3,4,5]]
-    use_residual_list_all = [[0], [2]]
+    use_residual_list_all = [[]]
+
+    # use_residual_list_all = [[0], [2]]
 
 
 
@@ -220,6 +222,13 @@ if __name__ == "__main__":
         "add3_remove_8_rotary": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
         "add3_remove_8_sin": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
         "add3_remove_8_T5": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_remove_8_nope": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+
+        "add3_ref_nope": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_ref_sin": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_ref_original": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_ref_T5": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
+        "add3_ref_rotary": "python3 train.py pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py ",
 
 
 
@@ -241,14 +250,16 @@ if __name__ == "__main__":
     for seed in seeds:
 
         # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
-        for choice in [ "add3_remove_8_T5"]:
+        for choice in [ "add3_ref_T5", "add3_ref_rotary"]:
             # choice = "mod3_nc"
             causal_training = True
             autoregressive_training = False
 
             batch_size = 4096 if not causal_training else 256
             max_iters = 2000 if not causal_training else 5000
-            learning_rate = 0.000026441 if not causal_training else  0.000026441
+            # learning_rate = 0.000026441 if not causal_training else  0.000026441
+            learning_rate = 0.0000016441 if not causal_training else  0.0000016441
+
             warmup_iters = 400 if not causal_training else 400
 
 
@@ -291,61 +302,61 @@ if __name__ == "__main__":
                 # for use_pe in ['nope', 'original']: # 'original''nope',
                 # for use_pe in ['original', 'nope']: # 'original''nope',
                 # for use_pe in ['nope']: # 'original''nope',
-                n_layers = 6
                 # for use_pe in ['original', 'nope']: # 'original''nope',
-                
-                for use_pe in [choice.split('_')[-1]]: # 'original''nope',
-                    layer_pe = choice.split('_')[-1]
-                    if 'shuffle' in choice:
-                        permuteMap = lambda use_residual_list: ["shuffle" if l in use_residual_list else 0 for l in range(n_layers)]
-                    elif 'remove' in choice:
-                        permuteMap = lambda use_residual_list: ["remove" if l in use_residual_list else 0 for l in range(n_layers)]
-                    else:
-                        permuteMap = lambda use_residual_list: use_residual_list
+                for n_layers in [6, 12]:
+                    for use_pe in [choice.split('_')[-1]]: # 'original''nope',
+                        layer_pe = choice.split('_')[-1]
+                        if 'shuffle' in choice:
+                            permuteMap = lambda use_residual_list: ["shuffle" if l in use_residual_list else 0 for l in range(n_layers)]
+                        elif 'remove' in choice:
+                            permuteMap = lambda use_residual_list: ["remove" if l in use_residual_list else 0 for l in range(n_layers)]
+                        else:
+                            permuteMap = lambda use_residual_list: use_residual_list
 
-                    out_name = f"{choice}_abs" if use_pe=='original' else f"{choice}_{use_pe}" # out4_1203 causal didn't converge.
-                    if layer_pe != use_pe:
-                        out_name += f"_layer_pe"
-                    os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
+                        out_name = f"{choice}_abs" if use_pe=='original' else f"{choice}_{use_pe}" # out4_1203 causal didn't converge.
+                        if layer_pe != use_pe:
+                            out_name += f"_layer_pe"
+                        os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
 
-                    pool = Pool(1)
-                    func = partial(run_training, out_name)
-                    args = [{
-                        'not_causal': not_causal_list[i],
-                        # 'use_residual': use_residual_list[i],
-                        'use_residual': True,
-                        # 'n_layer': n_layers[i],
-                        'use_pe': use_pe,
-                        'general_seed': seed,
-                        'choice': choice,
+                        pool = Pool(1)
+                        func = partial(run_training, out_name)
+                        args = [{
+                            'not_causal': not_causal_list[i],
+                            # 'use_residual': use_residual_list[i],
+                            'use_residual': True,
+                            'n_layer': n_layers,
+                            'use_pe': use_pe,
+                            'general_seed': seed,
+                            'choice': choice,
 
-                        'causal_training': causal_training,
-                        'batch_size': batch_size, 
-                        'max_iters': max_iters,
-                        'learning_rate': learning_rate,
-                        'warmup_iters': warmup_iters,
-                        
-                        'command': commands_dict[choice],  
-                        'save_best_loss': False,
-                        'save_final': False,
-                        'autoregressive_training': autoregressive_training,
-                        'permute': permuteMap(use_residual_list[i]), # for permute, set the layers to be permuted
-                        'permute_length': 8,
-                        # 'permute': False,
-                        'save_all_intermediate': True,
+                            'causal_training': causal_training,
+                            'batch_size': batch_size, 
+                            'max_iters': max_iters,
+                            'learning_rate': learning_rate,
+                            'warmup_iters': warmup_iters,
+                            
+                            'command': commands_dict[choice],  
+                            'save_best_loss': False,
+                            'save_final': False,
+                            'autoregressive_training': autoregressive_training,
+                            # 'permute': permuteMap(use_residual_list[i]), # for permute, set the layers to be permuted
+                            # 'permute_length': 8,
+                            # 'permute': False,
+                            'save_all_intermediate': True,
 
-                        # 'no_att_residual': no_att_residual_list[i],
-                        # 'no_mlp_residual': no_mlp_residual_list[i],
-                        # 'batch_size': bs[i],
-                        # 'message': '',
-                        'layerwise_pe': [0],
-                        'layer_pe': layer_pe,
-                        # 'use_flesh': True,
-                        # 'layerwise_pe_list': layerwise_pe_list[i],
-                    } for i in range(len(use_residual_list))]
-                    # for arg in args:
-                        # func(arg)
-                    pool.map(func, args)
-                    pool.close()   
+                            # 'no_att_residual': no_att_residual_list[i],
+                            # 'no_mlp_residual': no_mlp_residual_list[i],
+                            # 'batch_size': bs[i],
+                            # 'message': '',
+                            'layerwise_pe': [0],
+                            # 'layerwise_pe': False,
+                            'layer_pe': layer_pe,
+                            # 'use_flesh': True,
+                            # 'layerwise_pe_list': layerwise_pe_list[i],
+                        } for i in range(len(use_residual_list))]
+                        # for arg in args:
+                            # func(arg)
+                        pool.map(func, args)
+                        pool.close()   
 
-                # implement a teacher forcing
+                    # implement a teacher forcing

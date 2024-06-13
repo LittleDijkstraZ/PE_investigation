@@ -8,10 +8,12 @@ https://github.com/openai/gpt-2/blob/master/src/model.py
 https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 """
 
+from imp import init_frozen
 import math
 import inspect
 import dataclasses
 from dataclasses import dataclass
+from ast import literal_eval
 
 import torch
 import torch.nn as nn
@@ -158,7 +160,9 @@ class CausalSelfAttention(nn.Module):
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
 
         self.identity = nn.Identity() # this is only for helping to take out the results after attention through forward hook
-
+        self.iq = nn.Identity()
+        self.ik = nn.Identity()
+        self.iv = nn.Identity()
         # output projection
         self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
 
@@ -181,6 +185,8 @@ class CausalSelfAttention(nn.Module):
             print("Using Flash Attention")
         
         self.causal = bool(not config.not_causal)
+        self.init_scheme = config.init_scheme if hasattr(config, 'init_scheme') else 'default'
+            
         self._reset_parameters() 
         self.config = config
 
@@ -216,7 +222,9 @@ class CausalSelfAttention(nn.Module):
                 attn_mask = self.relative_emb(T, T) 
             else:
                 attn_mask = attn_mask + self.relative_emb(T, T)
-            
+
+        q, k, v = self.iq(q), self.ik(k), self.iv(v)
+
         if attn_mask is not None:
             attn_mask = torch.repeat_interleave(attn_mask.unsqueeze(1), self.n_head, dim=1) # (B, nh, T, T)
 
@@ -228,14 +236,14 @@ class CausalSelfAttention(nn.Module):
                 if attn_mask is None:
                     y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
                 else: # since torch doeds not allow setting both attn_mask and is_causal, we have to do it manually
-                    temp_mask = torch.ones(1, 1, T, T, dtype=torch.bool).tril(diagonal=0).to(attn_mask.device)
-                    # diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device)
+                    upper_tri_mask = torch.ones(1, 1, T, T, dtype=torch.bool).tril(diagonal=0).to(attn_mask.device) # mask out the upper triangular
+                    diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device) # force diagonal to be true
                     if attn_mask.dtype == torch.bool:
-                        attn_mask = attn_mask & temp_mask
-                        # attn_mask = attn_mask | diag_mask
+                        attn_mask = attn_mask & upper_tri_mask  # mask out the upper triangular
+                        attn_mask = attn_mask | diag_mask # force diagonal to be true
                     else:
-                        attn_mask = attn_mask.masked_fill(temp_mask == 0, float('-inf'))
-                        attn_mask = attn_mask[0,0]
+                        attn_mask = attn_mask.masked_fill(upper_tri_mask == 0, float('-inf'))
+                        attn_mask = attn_mask[0,0] # this is only for t5 bias
                         # attn_mask = attn_mask.masked_fill(diag_mask == 0, float('-inf'))
                     y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout if self.training else 0)
 
@@ -305,16 +313,26 @@ class CausalSelfAttention(nn.Module):
         return y
     
 
-    def _reset_parameters(self, std=0.02):
-        
-        ## random normal
-        # nn.init.normal_(self.c_attn.weight, mean=0, std=std) 
-        # nn.init.normal_(self.c_proj.weight, mean=0, std=std)
+    def _reset_parameters(self):
+        if self.init_scheme == 'default':
+            return 
+        scheme = literal_eval(self.init_scheme)
+        if scheme[0] == 'normal':
+            nn.init.normal_(self.c_attn.weight, mean=scheme[1], std=scheme[2]) # 0, 0.02
+            nn.init.normal_(self.c_proj.weight, mean=scheme[1], std=scheme[2])
+        elif scheme[0] == 'xavier':
+            nn.init.xavier_uniform_(self.c_attn.weight)
+            nn.init.xavier_uniform_(self.c_proj.weight)
+        elif scheme[0] == 'kaiming':
+            nn.init.kaiming_uniform_(self.c_attn.weight, a=scheme[1]) # math.sqrt(5)
+            nn.init.kaiming_uniform_(self.c_proj.weight, a=scheme[1])
+        elif scheme[0] == 'uniform':
+            nn.init.uniform_(self.c_attn.weight, scheme[1], scheme[2]) # 0.5, 0.6
+            nn.init.uniform_(self.c_proj.weight, scheme[1], scheme[2])
+        elif scheme[0] == 'constant':
+            nn.init.constant_(self.c_attn.weight, scheme[1])
+            nn.init.constant_(self.c_proj.weight, scheme[1])
 
-        ## xavier
-        # print('xavier init')
-        # nn.init.xavier_uniform_(self.c_attn.weight)
-        # nn.init.xavier_uniform_(self.c_proj.weight)
 
         ## kaiming
         # print('kaiming init')
@@ -337,7 +355,7 @@ class CausalSelfAttention(nn.Module):
         # print(self.c_attn.weight)
         # nn.init.constant_(self.c_proj.weight, 0.5)
 
-        return 
+        
 
 
 class MLP(nn.Module):
@@ -380,6 +398,7 @@ class Block(nn.Module):
 
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
+        self.layer_identity = nn.Identity()
         self.id = id
         # jason's 
 
@@ -445,7 +464,6 @@ class Block(nn.Module):
             x_skip = x
         return x_skip 
 
-
     def forward(self, 
                 x, 
                 attn_mask=None, 
@@ -474,36 +492,6 @@ class Block(nn.Module):
         else:
             x_skip = self.permute_func(x, res_weight_id=0)
             x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-            # if self.permute:
-      
-            #     if self.permute == True:
-            #         if self.permute_length != None:
-            #             x_skip = torch.mean(x[:, :self.permute_length, :], dim=1, keepdim=True)
-            #         else:
-            #             x_skip = torch.mean(x, dim=1, keepdim=True)
-            #         all_zeros = torch.zeros_like(x)
-            #         all_zeros[:, 0:1, :] += self.res1_weight * x_skip
-            #         x_skip = all_zeros
-            #     elif self.permute == 'shuffle':
-            #         if x.size(1) > self.permute_length:
-            #             randx = self.randx[:x.size(1)]
-            #             x_skip = self.res1_weight * x[:, randx, :]
-            #         else:
-            #             x_skip = self.res1_weight * x
-            #     elif self.permute == 'remove':
-            #         if x.size(1) > self.permute_length:
-            #             x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
-            #         else:
-            #             x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
-            #         x_skip = self.res1_weight * x_skip    
-
-            #     x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-            # else: # go normally
-            #     x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-
-            
-            # randx = torch.randperm(x.size(1)).to(x.device)
-            # x = x[:, self.randx, :]
 
 
         ln_2_fn = lambda x:x if ablation_config.get('no_ln_2', False) else self.ln_2(x)
@@ -514,35 +502,8 @@ class Block(nn.Module):
         else:
             x_skip = self.permute_func(x, res_weight_id=1)
             x = x_skip + mlp_fn(ln_2_fn(x))
-            # if self.permute:
-            #     # randx = self.randx[x.size(1)].to(x.device)
-            #     # x_skip = torch.mean(x, dim=1, keepdim=True)
-            #     # x_skip = self.res2_weight * torch.repeat_interleave(x_skip, x.size(1), dim=1)
-
-            #     ## all goes to the first
-            #     if self.permute == True:
-            #         x_skip = torch.mean(x, dim=1, keepdim=True)
-            #         all_zeros = torch.zeros_like(x)
-            #         all_zeros[:, 0:1, :] += self.res2_weight * x_skip
-            #         x_skip = all_zeros
-            #     elif self.permute == 'shuffle':
-            #         if x.size(1) > self.permute_length:
-                        
-            #             randx = self.randx[:x.size(1)]
-            #             x_skip = self.res2_weight * x[:, randx, :]
-            #         else:
-            #             x_skip = self.res2_weight * x
-            #     elif self.permute == 'remove':
-            #         if x.size(1) > self.permute_length:
-            #             x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
-            #         else:
-            #             x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
-            #         x_skip = self.res2_weight * x_skip    
-
-            #     x = x_skip + mlp_fn(ln_2_fn(x))
-            # else:
-            #     x = x + mlp_fn(ln_2_fn(x)) # original
-        
+           
+        x = self.layer_identity(x)
         return x
 
 from typing import Any
@@ -649,6 +610,15 @@ class GPT(nn.Module):
             if pn.endswith('c_proj.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
 
+        scheme = config.init_scheme if hasattr(config, 'init_scheme') else 'default'
+        for pn, p in self.named_parameters():
+            if pn.endswith('weight'):
+                if ('ln' in pn) or ('relative_emb' in pn): 
+                    continue # for layer norm, it's weight should initially be 1
+                # print(pn)
+
+                self.overide_init_scheme(p, scheme)
+
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
         print('test_run')
@@ -681,6 +651,24 @@ class GPT(nn.Module):
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    
+    def overide_init_scheme(self, weights, scheme):
+        if scheme == 'default':
+            return 
+        scheme = literal_eval(scheme)
+        if scheme[0] == 'normal':
+            nn.init.normal_(weights, mean=scheme[1], std=scheme[2]) # 0, 0.02
+        elif scheme[0] == 'xavier':
+            nn.init.xavier_uniform_(weights)
+        elif scheme[0] == 'kaiming':
+            nn.init.kaiming_uniform_(weights, a=scheme[1]) # math.sqrt(5)
+        elif scheme[0] == 'uniform':
+            nn.init.uniform_(weights, scheme[1], scheme[2]) # 0.5, 0.6
+        elif scheme[0] == 'constant':
+            nn.init.constant_(weights, scheme[1])
+
+
 
     @staticmethod
     def create_equal_distancing_vecotrs(n, dim, small_component=0.1): # the larger the small component, the closer the vectors
@@ -749,30 +737,32 @@ class GPT(nn.Module):
 
         # forward the GPT model itselfs
 
-        if not direct_input_modification:
-            if equal_distancing_exp: # override the input idx with equal distancing vectors
-                L = idx.size(1)
-                vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
-                x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
-                
-            else: # go normally
-                ## Nope
+        if equal_distancing_exp: # override the input idx with equal distancing vectors
+            L = idx.size(1)
+            vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
+            x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
+            
+        else: # go normally
+            ## Nope
+            if not direct_input_modification:
                 tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-                if self.config.use_pe == 'original':
-                    device = idx.device
-                    b, t = idx.size()
-                    assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-                    pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
-                    pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
-                    x = tok_emb + pos_emb
-                elif self.config.use_pe == 'sin':
-                    x = self.transformer.wpe(tok_emb)
-                else:
-                    x = tok_emb
+            else:
+                tok_emb = idx
 
-            x = self.transformer.drop(x)
-        else:
-            x = idx # the idx now should be a sequence of vectors
+            print(idx.shape)
+            if self.config.use_pe == 'original':
+                device = idx.device
+                b, t = idx.size()[0], idx.size()[1]
+                assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
+                pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+                pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+                x = tok_emb + pos_emb
+            elif self.config.use_pe == 'sin':
+                x = self.transformer.wpe(tok_emb)
+            else:
+                x = tok_emb
+
+        x = self.transformer.drop(x)
 
         temp_counter = {}
         for bidx, block in enumerate(self.transformer.h):
