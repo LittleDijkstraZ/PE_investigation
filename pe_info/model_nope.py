@@ -157,6 +157,7 @@ class CausalSelfAttention(nn.Module):
             print('T5 in use')
 
         # key, query, value projections for all heads, but in a batch
+        self.pre_att_identity = nn.Identity() # this is only for helping to take out the results after attention through forward hook
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
 
         self.identity = nn.Identity() # this is only for helping to take out the results after attention through forward hook
@@ -187,12 +188,11 @@ class CausalSelfAttention(nn.Module):
         self.causal = bool(not config.not_causal)
         self.init_scheme = config.init_scheme if hasattr(config, 'init_scheme') else 'default'
             
-        self._reset_parameters() 
         self.config = config
 
     def forward(self, x, attn_mask=None, ablation_config=dict()):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
-
+        x = self.pre_att_identity(x) # grab x before attention : )
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         if ablation_config.get('shrink_x', False):
             shrink_factor = float(ablation_config['shrink_x'])
@@ -313,47 +313,7 @@ class CausalSelfAttention(nn.Module):
         return y
     
 
-    def _reset_parameters(self):
-        if self.init_scheme == 'default':
-            return 
-        scheme = literal_eval(self.init_scheme)
-        if scheme[0] == 'normal':
-            nn.init.normal_(self.c_attn.weight, mean=scheme[1], std=scheme[2]) # 0, 0.02
-            nn.init.normal_(self.c_proj.weight, mean=scheme[1], std=scheme[2])
-        elif scheme[0] == 'xavier':
-            nn.init.xavier_uniform_(self.c_attn.weight)
-            nn.init.xavier_uniform_(self.c_proj.weight)
-        elif scheme[0] == 'kaiming':
-            nn.init.kaiming_uniform_(self.c_attn.weight, a=scheme[1]) # math.sqrt(5)
-            nn.init.kaiming_uniform_(self.c_proj.weight, a=scheme[1])
-        elif scheme[0] == 'uniform':
-            nn.init.uniform_(self.c_attn.weight, scheme[1], scheme[2]) # 0.5, 0.6
-            nn.init.uniform_(self.c_proj.weight, scheme[1], scheme[2])
-        elif scheme[0] == 'constant':
-            nn.init.constant_(self.c_attn.weight, scheme[1])
-            nn.init.constant_(self.c_proj.weight, scheme[1])
 
-
-        ## kaiming
-        # print('kaiming init')
-        # nn.init.kaiming_uniform_(self.c_attn.weight, a=math.sqrt(5))
-        # nn.init.kaiming_uniform_(self.c_proj.weight, a=math.sqrt(5))
-
-        ## orthogonal
-        # print('orthogonal init')
-        # nn.init.orthogonal_(self.c_attn.weight)
-        # nn.init.orthogonal_(self.c_proj.weight)
-
-        ## uniform
-        # print('uniform init')
-        # nn.init.uniform_(self.c_attn.weight, 0.5, 0.6)
-        # nn.init.uniform_(self.c_proj.weight, 0.5, 0.6)
-
-        ## constant
-        # print('constant init')
-        # nn.init.constant_(self.c_attn.weight, 0.5)
-        # print(self.c_attn.weight)
-        # nn.init.constant_(self.c_proj.weight, 0.5)
 
         
 
@@ -749,7 +709,6 @@ class GPT(nn.Module):
             else:
                 tok_emb = idx
 
-            print(idx.shape)
             if self.config.use_pe == 'original':
                 device = idx.device
                 b, t = idx.size()[0], idx.size()[1]
