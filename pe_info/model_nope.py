@@ -8,15 +8,94 @@ https://github.com/openai/gpt-2/blob/master/src/model.py
 https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 """
 
+from imp import init_frozen
 import math
 import inspect
 import dataclasses
 from dataclasses import dataclass
+from ast import literal_eval
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+class RelativePositionBias(nn.Module):
+    def __init__(self, bidirectional=False, num_buckets=32, max_distance=128, n_heads=2):
+        super(RelativePositionBias, self).__init__()
+        self.bidirectional = bidirectional
+        self.num_buckets = num_buckets
+        self.max_distance = max_distance
+        self.n_heads = n_heads
+        self.relative_attention_bias = nn.Embedding(self.num_buckets, self.n_heads)
+
+    @staticmethod
+    def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
+        """
+        Adapted from Mesh Tensorflow:
+        https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
+
+        Translate relative position to a bucket number for relative attention. The relative position is defined as
+        memory_position - query_position, i.e. the distance in tokens from the attending position to the attended-to
+        position. If bidirectional=False, then positive relative positions are invalid. We use smaller buckets for
+        small absolute relative_position and larger buckets for larger absolute relative_positions. All relative
+        positions >=max_distance map to the same bucket. All relative positions <=-max_distance map to the same bucket.
+        This should allow for more graceful generalization to longer sequences than the model has been trained on
+
+        Args:
+            relative_position: an int32 Tensor
+            bidirectional: a boolean - whether the attention is bidirectional
+            num_buckets: an integer
+            max_distance: an integer
+
+        Returns:
+            a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
+        """
+        relative_buckets = 0
+        if bidirectional:
+            num_buckets //= 2
+            relative_buckets += (relative_position > 0).to(torch.long) * num_buckets
+            relative_position = torch.abs(relative_position)
+        else:
+            relative_position = -torch.min(relative_position, torch.zeros_like(relative_position))
+        # now relative_position is in the range [0, inf)
+
+        # half of the buckets are for exact increments in positions
+        max_exact = num_buckets // 2
+        is_small = relative_position < max_exact
+
+        # The other half of the buckets are for logarithmically bigger bins in positions up to max_distance
+        relative_postion_if_large = max_exact + (
+            torch.log(relative_position.float() / max_exact)
+            / math.log(max_distance / max_exact)
+            * (num_buckets - max_exact)
+        ).to(torch.long)
+        relative_postion_if_large = torch.min(
+            relative_postion_if_large, torch.full_like(relative_postion_if_large, num_buckets - 1)
+        )
+
+        relative_buckets += torch.where(is_small, relative_position, relative_postion_if_large)
+        return relative_buckets
+
+    def compute_bias(self, query_length, key_length):
+        """Compute binned relative position bias"""
+        context_position = torch.arange(
+            query_length, dtype=torch.long, device=self.relative_attention_bias.weight.device
+        )[:, None]
+        memory_position = torch.arange(
+            key_length, dtype=torch.long, device=self.relative_attention_bias.weight.device
+        )[None, :]
+        relative_position = memory_position - context_position  # shape (query_length, key_length)
+        relative_position_bucket = self._relative_position_bucket(
+            relative_position,  # shape (query_length, key_length)
+            bidirectional=self.bidirectional,
+            num_buckets=self.num_buckets,
+        )
+        values = self.relative_attention_bias(relative_position_bucket)  # shape (query_length, key_length, num_heads)
+        values = values.permute([2, 0, 1]).unsqueeze(0)  # shape (1, num_heads, query_length, key_length)
+        return values
+
+    def forward(self, qlen, klen):
+        return self.compute_bias(qlen, klen)  # shape (1, num_heads, qlen, klen)
 
 class SinusoidalPositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
@@ -60,16 +139,31 @@ class LayerNorm(nn.Module):
     def forward(self, input):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
+
+from rotary_embedding_torch import RotaryEmbedding
+
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
         assert config.n_embd % config.n_head == 0
+
+        if config.layer_pe == 'rotary':
+            self.rotary_emb = RotaryEmbedding(config.n_embd // config.n_head,
+                                              freqs_for='lang')
+            print('rotary in use')
+        elif config.layer_pe == 'T5':
+            self.relative_emb = RelativePositionBias(max_distance=config.block_size ,n_heads=config.n_head)
+            print('T5 in use')
+
         # key, query, value projections for all heads, but in a batch
+        self.pre_att_identity = nn.Identity() # this is only for helping to take out the results after attention through forward hook
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
 
         self.identity = nn.Identity() # this is only for helping to take out the results after attention through forward hook
-
+        self.iq = nn.Identity()
+        self.ik = nn.Identity()
+        self.iv = nn.Identity()
         # output projection
         self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
 
@@ -90,12 +184,15 @@ class CausalSelfAttention(nn.Module):
                                         .view(1, 1, config.block_size, config.block_size))
         else:
             print("Using Flash Attention")
+        
         self.causal = bool(not config.not_causal)
-        self._reset_parameters() 
+        self.init_scheme = config.init_scheme if hasattr(config, 'init_scheme') else 'default'
+            
+        self.config = config
 
     def forward(self, x, attn_mask=None, ablation_config=dict()):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
-
+        x = self.pre_att_identity(x) # grab x before attention : )
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         if ablation_config.get('shrink_x', False):
             shrink_factor = float(ablation_config['shrink_x'])
@@ -117,6 +214,17 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
+        if self.config.layer_pe == 'rotary':
+            q = self.rotary_emb.rotate_queries_or_keys(q)
+            k = self.rotary_emb.rotate_queries_or_keys(k)
+        elif self.config.layer_pe == 'T5':
+            if attn_mask is None:
+                attn_mask = self.relative_emb(T, T) 
+            else:
+                attn_mask = attn_mask + self.relative_emb(T, T)
+
+        q, k, v = self.iq(q), self.ik(k), self.iv(v)
+
         if attn_mask is not None:
             attn_mask = torch.repeat_interleave(attn_mask.unsqueeze(1), self.n_head, dim=1) # (B, nh, T, T)
 
@@ -128,10 +236,15 @@ class CausalSelfAttention(nn.Module):
                 if attn_mask is None:
                     y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
                 else: # since torch doeds not allow setting both attn_mask and is_causal, we have to do it manually
-                    temp_mask = torch.ones(1, 1, T, T, dtype=torch.bool).tril(diagonal=0).to(attn_mask.device)
-                    diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device)
-                    attn_mask = attn_mask & temp_mask
-                    attn_mask = attn_mask | diag_mask
+                    upper_tri_mask = torch.ones(1, 1, T, T, dtype=torch.bool).tril(diagonal=0).to(attn_mask.device) # mask out the upper triangular
+                    diag_mask = torch.diag_embed(torch.ones(T, dtype=torch.bool)).unsqueeze(0).unsqueeze(0).to(attn_mask.device) # force diagonal to be true
+                    if attn_mask.dtype == torch.bool:
+                        attn_mask = attn_mask & upper_tri_mask  # mask out the upper triangular
+                        attn_mask = attn_mask | diag_mask # force diagonal to be true
+                    else:
+                        attn_mask = attn_mask.masked_fill(upper_tri_mask == 0, float('-inf'))
+                        attn_mask = attn_mask[0,0] # this is only for t5 bias
+                        # attn_mask = attn_mask.masked_fill(diag_mask == 0, float('-inf'))
                     y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout if self.training else 0)
 
             else:
@@ -191,7 +304,7 @@ class CausalSelfAttention(nn.Module):
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
 
-            
+        
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
 
         # output projection
@@ -200,39 +313,9 @@ class CausalSelfAttention(nn.Module):
         return y
     
 
-    def _reset_parameters(self, std=0.02):
+
+
         
-        ## random normal
-        # nn.init.normal_(self.c_attn.weight, mean=0, std=std) 
-        # nn.init.normal_(self.c_proj.weight, mean=0, std=std)
-
-        ## xavier
-        # print('xavier init')
-        # nn.init.xavier_uniform_(self.c_attn.weight)
-        # nn.init.xavier_uniform_(self.c_proj.weight)
-
-        ## kaiming
-        # print('kaiming init')
-        # nn.init.kaiming_uniform_(self.c_attn.weight, a=math.sqrt(5))
-        # nn.init.kaiming_uniform_(self.c_proj.weight, a=math.sqrt(5))
-
-        ## orthogonal
-        # print('orthogonal init')
-        # nn.init.orthogonal_(self.c_attn.weight)
-        # nn.init.orthogonal_(self.c_proj.weight)
-
-        ## uniform
-        # print('uniform init')
-        # nn.init.uniform_(self.c_attn.weight, 0.5, 0.6)
-        # nn.init.uniform_(self.c_proj.weight, 0.5, 0.6)
-
-        ## constant
-        # print('constant init')
-        # nn.init.constant_(self.c_attn.weight, 0.5)
-        # print(self.c_attn.weight)
-        # nn.init.constant_(self.c_proj.weight, 0.5)
-
-        return 
 
 
 class MLP(nn.Module):
@@ -266,19 +349,22 @@ class Block(nn.Module):
         super().__init__()
         self.config = dataclasses.replace(config)
         self.config.not_causal = config.not_causal[id]
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.layerwise_pe = config.layerwise_pe[id]
 
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        
+        self.config.layer_pe = config.layer_pe if self.layerwise_pe else None
         self.attn = CausalSelfAttention(self.config)
 
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
+        self.layer_identity = nn.Identity()
         self.id = id
         # jason's 
 
         self.use_residual = config.use_residual[id]
         self.no_att_residual = config.no_att_residual[id] if self.use_residual else True
         self.no_mlp_residual = config.no_mlp_residual[id] if self.use_residual else True
-        self.layerwise_pe = config.layerwise_pe[id]
         self.pe_type = config.layer_pe
         self.permute = config.permute[id]
         self.permute_length = config.permute_length
@@ -307,6 +393,7 @@ class Block(nn.Module):
                 self.layer_wpe = nn.Embedding(self.block_size, config.n_embd)
             elif config.layer_pe == 'sin':
                 self.layer_wpe = SinusoidalPositionalEncoding(config.n_embd, self.block_size)
+          
 
         print(f"Block {id}: {self.use_residual} | att_res {not self.no_att_residual} | perm {self.permute} | mlp_res {not self.no_mlp_residual} | layerwise_pe {self.layerwise_pe} | casual {not self.config.not_causal}")
 
@@ -337,7 +424,6 @@ class Block(nn.Module):
             x_skip = x
         return x_skip 
 
-
     def forward(self, 
                 x, 
                 attn_mask=None, 
@@ -366,36 +452,6 @@ class Block(nn.Module):
         else:
             x_skip = self.permute_func(x, res_weight_id=0)
             x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-            # if self.permute:
-      
-            #     if self.permute == True:
-            #         if self.permute_length != None:
-            #             x_skip = torch.mean(x[:, :self.permute_length, :], dim=1, keepdim=True)
-            #         else:
-            #             x_skip = torch.mean(x, dim=1, keepdim=True)
-            #         all_zeros = torch.zeros_like(x)
-            #         all_zeros[:, 0:1, :] += self.res1_weight * x_skip
-            #         x_skip = all_zeros
-            #     elif self.permute == 'shuffle':
-            #         if x.size(1) > self.permute_length:
-            #             randx = self.randx[:x.size(1)]
-            #             x_skip = self.res1_weight * x[:, randx, :]
-            #         else:
-            #             x_skip = self.res1_weight * x
-            #     elif self.permute == 'remove':
-            #         if x.size(1) > self.permute_length:
-            #             x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
-            #         else:
-            #             x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
-            #         x_skip = self.res1_weight * x_skip    
-
-            #     x = x_skip + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-            # else: # go normally
-            #     x = x + self.attn(ln_1_fn(x), attn_mask=attn_mask, ablation_config=ablation_config)
-
-            
-            # randx = torch.randperm(x.size(1)).to(x.device)
-            # x = x[:, self.randx, :]
 
 
         ln_2_fn = lambda x:x if ablation_config.get('no_ln_2', False) else self.ln_2(x)
@@ -406,35 +462,8 @@ class Block(nn.Module):
         else:
             x_skip = self.permute_func(x, res_weight_id=1)
             x = x_skip + mlp_fn(ln_2_fn(x))
-            # if self.permute:
-            #     # randx = self.randx[x.size(1)].to(x.device)
-            #     # x_skip = torch.mean(x, dim=1, keepdim=True)
-            #     # x_skip = self.res2_weight * torch.repeat_interleave(x_skip, x.size(1), dim=1)
-
-            #     ## all goes to the first
-            #     if self.permute == True:
-            #         x_skip = torch.mean(x, dim=1, keepdim=True)
-            #         all_zeros = torch.zeros_like(x)
-            #         all_zeros[:, 0:1, :] += self.res2_weight * x_skip
-            #         x_skip = all_zeros
-            #     elif self.permute == 'shuffle':
-            #         if x.size(1) > self.permute_length:
-                        
-            #             randx = self.randx[:x.size(1)]
-            #             x_skip = self.res2_weight * x[:, randx, :]
-            #         else:
-            #             x_skip = self.res2_weight * x
-            #     elif self.permute == 'remove':
-            #         if x.size(1) > self.permute_length:
-            #             x_skip = torch.concatenate([torch.repeat_interleave(self.voids, x.size(0), dim=0), x[:, self.permute_length:, :]], dim=1)
-            #         else:
-            #             x_skip = torch.repeat_interleave(self.voids, x.size(0), dim=0)[:, :x.size(1), :]
-            #         x_skip = self.res2_weight * x_skip    
-
-            #     x = x_skip + mlp_fn(ln_2_fn(x))
-            # else:
-            #     x = x + mlp_fn(ln_2_fn(x)) # original
-        
+           
+        x = self.layer_identity(x)
         return x
 
 from typing import Any
@@ -480,6 +509,7 @@ def handle_list(config, key):
             assert type(attr) is bool, f" {attr} {type(attr)} need to have id to use integer or "
             attr_per_layer = attr_per_layer + int(attr)
     return list(attr_per_layer)
+
 
 import numpy as np
 class GPT(nn.Module):
@@ -540,6 +570,15 @@ class GPT(nn.Module):
             if pn.endswith('c_proj.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
 
+        scheme = config.init_scheme if hasattr(config, 'init_scheme') else 'default'
+        for pn, p in self.named_parameters():
+            if pn.endswith('weight'):
+                if ('ln' in pn) or ('relative_emb' in pn): 
+                    continue # for layer norm, it's weight should initially be 1
+                # print(pn)
+
+                self.overide_init_scheme(p, scheme)
+
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
         print('test_run')
@@ -572,6 +611,24 @@ class GPT(nn.Module):
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    
+    def overide_init_scheme(self, weights, scheme):
+        if scheme == 'default':
+            return 
+        scheme = literal_eval(scheme)
+        if scheme[0] == 'normal':
+            nn.init.normal_(weights, mean=scheme[1], std=scheme[2]) # 0, 0.02
+        elif scheme[0] == 'xavier':
+            nn.init.xavier_uniform_(weights)
+        elif scheme[0] == 'kaiming':
+            nn.init.kaiming_uniform_(weights, a=scheme[1]) # math.sqrt(5)
+        elif scheme[0] == 'uniform':
+            nn.init.uniform_(weights, scheme[1], scheme[2]) # 0.5, 0.6
+        elif scheme[0] == 'constant':
+            nn.init.constant_(weights, scheme[1])
+
+
 
     @staticmethod
     def create_equal_distancing_vecotrs(n, dim, small_component=0.1): # the larger the small component, the closer the vectors
@@ -640,30 +697,31 @@ class GPT(nn.Module):
 
         # forward the GPT model itselfs
 
-        if not direct_input_modification:
-            if equal_distancing_exp: # override the input idx with equal distancing vectors
-                L = idx.size(1)
-                vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
-                x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
-                
-            else: # go normally
-                ## Nope
+        if equal_distancing_exp: # override the input idx with equal distancing vectors
+            L = idx.size(1)
+            vecs, dist_mat = GPT.create_equal_distancing_vecotrs(L, self.config.n_embd)
+            x = torch.tensor(vecs[None, ], dtype=torch.float32).to(idx.device)
+            
+        else: # go normally
+            ## Nope
+            if not direct_input_modification:
                 tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-                if self.config.use_pe == 'original':
-                    device = idx.device
-                    b, t = idx.size()
-                    assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-                    pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
-                    pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
-                    x = tok_emb + pos_emb
-                elif self.config.use_pe == 'sin':
-                    x = self.transformer.wpe(tok_emb)
-                else:
-                    x = tok_emb
+            else:
+                tok_emb = idx
 
-            x = self.transformer.drop(x)
-        else:
-            x = idx # the idx now should be a sequence of vectors
+            if self.config.use_pe == 'original':
+                device = idx.device
+                b, t = idx.size()[0], idx.size()[1]
+                assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
+                pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+                pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+                x = tok_emb + pos_emb
+            elif self.config.use_pe == 'sin':
+                x = self.transformer.wpe(tok_emb)
+            else:
+                x = tok_emb
+
+        x = self.transformer.drop(x)
 
         temp_counter = {}
         for bidx, block in enumerate(self.transformer.h):
@@ -813,7 +871,7 @@ class GPT(nn.Module):
                     no_decay.add(fpn)
                 # elif isinstance(m, torch.nn.Parameter):
                 #     no_decay.add(fpn)
-                elif pn.endswith('_weight'): # for res1, res2 weight params
+                elif pn.endswith('_weight') or pn.endswith('freqs') or 'RelativePositionBias' in pn: # for res1, res2 weight params; 'freqs' for rotary embeddings
                     no_decay.add(fpn)
 
                 #     print('mn:', mn)

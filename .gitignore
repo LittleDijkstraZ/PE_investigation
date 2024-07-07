@@ -1,8 +1,11 @@
 outputs/*
+outputs_permute/*
 wandb/*
+saved_*
 
 **__pycache__/*
 
 *.svg
 *.png
 **.pyc
+
