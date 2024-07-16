@@ -250,7 +250,9 @@ if __name__ == "__main__":
     for seed in seeds:
 
         # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
-        for choice in [ "add3_ref_T5", "add3_ref_rotary"]:
+        for choice in [ "add3_ref_nope", "add3_ref_sin", "add3_ref_original"]:
+
+        # for choice in [ "add3_ref_T5", "add3_ref_rotary"]:
             # choice = "mod3_nc"
             causal_training = True
             autoregressive_training = False
@@ -348,8 +350,8 @@ if __name__ == "__main__":
                             # 'no_mlp_residual': no_mlp_residual_list[i],
                             # 'batch_size': bs[i],
                             # 'message': '',
-                            'layerwise_pe': [0],
-                            # 'layerwise_pe': False,
+                            # 'layerwise_pe': [0],
+                            'layerwise_pe': False,
                             'layer_pe': layer_pe,
                             # 'use_flesh': True,
                             # 'layerwise_pe_list': layerwise_pe_list[i],
