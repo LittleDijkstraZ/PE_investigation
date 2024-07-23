@@ -1,4 +1,5 @@
 import os
+from ssl import OP_NO_RENEGOTIATION
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -259,7 +260,12 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         if algo_reason:
             abc = abc.split('Target')[-2]
         abc = abc.strip().split('\n')[-1]
-    if 'sin(' in abc:
+    
+    if 'amr' in abc:
+        operation = 'amr'
+    elif 'amf' in abc:
+        operation = 'amf'
+    elif 'sin(' in abc:
         operation = 'sin'
     elif 'sqrt(' in abc:
         operation = 'sqrt'
@@ -297,6 +303,13 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
             a = abc.strip().split('=')[0]
         a = a.replace(operation, '').replace('(', '').replace(')', '')
         b = '' # this ensures no carry operations 
+    elif operation in ['amr', 'amf']:
+        a = abc.strip().split('=')[0]
+        a = a.replace(operation, '').replace('(', '').replace(')', '')
+        b = ''
+        
+
+    
 
     if a[0] == '$':
         a = a[1:]
@@ -352,7 +365,12 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         c = sum([int(i) for i in a]) % 3
     elif operation == 'modp':
         c = sum([int(i) for i in a[2:]]) % 3
-
+    elif operation == 'amf':
+        a1, a2, p = a.split(',')
+        c = (int(a1) +int(a2)) % int(p)
+    elif operation == 'amr':
+        r, p, a1, a2 = a.split(',')
+        c = (int(r)-(int(a1) +int(a2)*10) % int(p))%int(p)
     
     if '\n' in b: b = b[:-1]
 
@@ -740,7 +758,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'wrong  : {op}({a})={c_hat2}')
                                 print(f'correct: {op}({a})={c}')
 
-                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods']:
+                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -1063,7 +1081,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print('outputs(x): ', outcome)
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
-                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods']:
+                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1154,7 +1172,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = math.floor(y * 10000) / 10000
                     data_list.append((float(x), float(y), operator))
 
-                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods']:
+                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
@@ -1247,6 +1265,23 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = sum([int(digit)%2 for digit in str(x)]) 
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
+                
+                elif operator == 'amf':
+                    a1 = random.randint(0, 1000)
+                    a2 = random.randint(0, 1000) 
+                    p = 6
+
+                    y = (a1+a2)%p
+                    data_list.append((a1, a2, p, y, operator))
+
+                elif operator == 'amr':
+                    a1 = random.randint(0, 1000)
+                    a2 = random.randint(0, 1000) 
+                    p = 6
+                    r = (a1+a2)%p
+                    y = a2%10
+                    a2 = a2//10*10
+                    data_list.append((r, p, a1, a2, y, operator))
 
 
     return data_list
@@ -1720,6 +1755,32 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
                 output_str = prompt + output_str + '\n'
             if add_space:
                 output_str = add_spaces(output_str)
+
+            if idx == 0:
+                data_str = output_str
+            else:
+                data_str += output_str
+
+        elif operator in ['amf']:
+            a1, a2, p, y = data_tuple[:4]
+
+            if train:
+                output_str = f"${operator}({a1},{a2},{p})={y}$\n"
+            else:
+                output_str = f"${operator}({a1},{a2},{p})=\n"
+
+            if idx == 0:
+                data_str = output_str
+            else:
+                data_str += output_str
+
+        elif operator in ['amr']:
+            r, p, a1, a2, y = data_tuple[:5]
+
+            if train:
+                output_str = f"${operator}({r},{p},{a1},{a2})={y}$\n"
+            else:
+                output_str = f"${operator}({r},{p},{a1},{a2})=\n"
 
             if idx == 0:
                 data_str = output_str
