@@ -153,7 +153,8 @@ if __name__ == "__main__":
     config = {k: globals()[k] for k in config_keys} # will be useful for logging
     # -----------------------------------------------------------------------------
 
-
+    if 'OP_NO_RENEGOTIATION' in config:
+        del config['OP_NO_RENEGOTIATION']
     # jason's change:
     if 'use_residual' in config.keys():
         print(f"using residual: {config['use_residual']}")
@@ -642,6 +643,7 @@ if __name__ == "__main__":
 
     result_dir = get_results_dir(config)
     config['result_dir'] = result_dir
+    # print(config)
     with open(os.path.join(result_dir, "config.yaml"), "w") as yaml_file:
         yaml.dump(config, yaml_file, default_flow_style=False)
 

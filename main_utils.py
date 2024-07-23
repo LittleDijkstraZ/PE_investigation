@@ -117,6 +117,9 @@ def get_num_digits(a: str):
     if a == '':
         return 0
     else:
+        if ',' in a:
+            a = a.replace(',', '')
+
         if '.' in a: # if a contains a decimal point
             return len(a) - 1
         else:
@@ -652,7 +655,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
         x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
         len_x = len(x[0])
         a,b,c,op = get_abc_new(line, zero_pad=zero_pad, reverse_ab=reverse_ab, binary=binary, few_shot=fewshot, algo_reason=algo_reason)
-        a_d, b_d, num_carry = get_num_digits(a), get_num_digits(b), numCarryOps(a,b, binary=binary)
+        a_d, b_d, num_carry = get_num_digits(a), get_num_digits(b), numCarryOps(a, b, binary=binary)
         prompt_length = len(start_ids)
         # NOTE: prompt_length != len(line) if we're not using character level tokenization
         input_tuple = (x, len(line), line[0], a, b, c, a_d, b_d, num_carry)
@@ -1270,9 +1273,9 @@ def get_data_list(filename=None, operator='+', delim=None):
                     a1 = random.randint(0, 1000)
                     a2 = random.randint(0, 1000) 
                     p = 6
-
+                    x = ",".join(map(str,[a1, a2, p]))
                     y = (a1+a2)%p
-                    data_list.append((a1, a2, p, y, operator))
+                    data_list.append((x, y, operator))
 
                 elif operator == 'amr':
                     a1 = random.randint(0, 1000)
@@ -1281,7 +1284,8 @@ def get_data_list(filename=None, operator='+', delim=None):
                     r = (a1+a2)%p
                     y = a2%10
                     a2 = a2//10*10
-                    data_list.append((r, p, a1, a2, y, operator))
+                    x = ",".join(map(str, [r, p, a1, a2]))
+                    data_list.append((x, y, operator))
 
 
     return data_list
@@ -1762,8 +1766,8 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
                 data_str += output_str
 
         elif operator in ['amf']:
-            a1, a2, p, y = data_tuple[:4]
-
+            x, y = data_tuple[:2]
+            a1, a2, p = x.split(',')
             if train:
                 output_str = f"${operator}({a1},{a2},{p})={y}$\n"
             else:
@@ -1775,8 +1779,8 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
                 data_str += output_str
 
         elif operator in ['amr']:
-            r, p, a1, a2, y = data_tuple[:5]
-
+            x, y = data_tuple[:2]
+            r, p, a1, a2 = x.split(',')
             if train:
                 output_str = f"${operator}({r},{p},{a1},{a2})={y}$\n"
             else:
