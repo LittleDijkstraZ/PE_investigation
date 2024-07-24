@@ -25,15 +25,15 @@ wandb_run_name = f'addmod_6_r{pe_status}{residual_status}'
 
 data_type='text'
 data_format='plain'
-operator = 'addmod_6_r'
-dataset = 'addmod_6_r'
+operator = 'amr'
+dataset = 'addmod'
 
 block_size = 256 # context of up to 256 previous characters
 train_data_path = 'train_addmod_6_r_10000.txt'
 # val_data_path = 'val.bin'
 ckpt_path_name = 'ckpt_10000.pt'
 eval_addition = True
-start = "FILE:data/addmod_6_r/test_addmod_6_r_10000.txt"
+start = "FILE:data/addmod/test_addmod_6_r_10000.txt"
 eval_addition_train = True
 # start_train = "FILE:data/one-sided-subtraction/plain/add_examples_10000_trainprompt.txt"
 
