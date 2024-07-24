@@ -1,5 +1,7 @@
 outputs/*
 outputs_permute/*
+outputs_ref/*
+
 wandb/*
 saved_*
 
