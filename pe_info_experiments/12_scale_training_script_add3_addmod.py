@@ -141,7 +141,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
     #     + [[i for i in range(6)]]s
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0, 1)]
+    seeds = [240+i for i in range(1, 5)]
 
     # use_residual_list_all = [[]] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
@@ -191,6 +191,12 @@ if __name__ == "__main__":
 
         "addmod_6_f_original": "python3 train.py pe_info/config2_pe/addmod_6_f/jason_train_addition_bal.py ",
         "addmod_6_r_original": "python3 train.py pe_info/config2_pe/addmod_6_r/jason_train_addition_bal.py ",
+        "rev_original": "python3 train.py pe_info/config2_pe/rev/jason_train_addition_bal.py ",
+        "rev_nope": "python3 train.py pe_info/config2_pe/rev/jason_train_addition_bal.py ",
+
+        "order_nope": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
+        "order_original": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
+
 
 
         "mod3" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
@@ -210,11 +216,10 @@ if __name__ == "__main__":
     for seed in seeds:
 
         # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
-        for choice in ["addmod_6_f_original", "addmod_6_r_original"]:
-
+        for choice in ["addmod_6_f_original", "addmod_6_r_original", "rev_nope", "order_nope" ]:
             causal_training = True # addmod can do causal training
             autoregressive_training = False
-            batch_size = 4096 if not causal_training else 256
+            batch_size = 4096 if not causal_training  else 256
             max_iters = 2000 if not causal_training else 5000
             # learning_rate = 0.000026441 if not causal_training else  0.000026441
             learning_rate = 0.0000016441 if not causal_training else  0.0000016441
