@@ -213,8 +213,9 @@ if __name__ == "__main__":
 
         # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
         for choice in [
-                    # "addmod_6_f_original", "addmod_6_r_original", 
-                       "rev_nope", "order_nope" ]:
+                    "addmod_6_f_original", "addmod_6_r_original", 
+                    #    "rev_nope", "order_nope" 
+                       ]:
             causal_training = True # addmod can do causal training
             autoregressive_training = False
             batch_size = 4096 if not causal_training  else 256
