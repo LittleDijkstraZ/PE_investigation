@@ -29,7 +29,7 @@ operator = 'modclean'
 dataset = 'modclean'
 
 block_size = 256 # context of up to 256 previous characters
-train_data_path = 'train_modclean_10000.txt'
+train_data_path = 'train_modclean_40000.txt'
 # val_data_path = 'val.bin'
 ckpt_path_name = 'ckpt_10000.pt'
 eval_addition = True

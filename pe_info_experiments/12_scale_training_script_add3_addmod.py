@@ -141,7 +141,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
     #     + [[i for i in range(6)]]s
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0, 1)]
+    seeds = [240+i for i in range(1, 2)]
 
     # use_residual_list_all = [[]] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
