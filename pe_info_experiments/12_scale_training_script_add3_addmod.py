@@ -201,6 +201,10 @@ if __name__ == "__main__":
         "modp" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
         "modp_nc" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
 
+        "modclean_nope" : "python3 train.py pe_info/config2_pe/modclean_nope/jason_train_addition_bal.py ",
+        "modclean_original" : "python3 train.py pe_info/config2_pe/modclean_nope/jason_train_addition_bal.py ",
+
+
         "mods": "python3 train.py pe_info/config2_pe/mods/jason_train_addition_bal.py ",
         "mods_nc": "python3 train.py pe_info/config2_pe/mods/jason_train_addition_bal.py ",
 
@@ -213,9 +217,8 @@ if __name__ == "__main__":
 
         # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
         for choice in [
-                    "addmod_6_f_original", "addmod_6_r_original", 
-                    #    "rev_nope", "order_nope" 
-                       ]:
+                    # "addmod_6_f_original", "addmod_6_r_original", 
+                       "modclean_nope",]:
             causal_training = True # addmod can do causal training
             autoregressive_training = False
             batch_size = 4096 if not causal_training  else 256
@@ -244,7 +247,7 @@ if __name__ == "__main__":
                 # for use_pe in ['original', 'nope']: # 'original''nope',
                 # for use_pe in ['nope']: # 'original''nope',
                 # for use_pe in ['original', 'nope']: # 'original''nope',
-                for n_layers in [12]:
+                for n_layers in [6]:
                     for use_pe in [choice.split('_')[-1]]: # 'original''nope',
                         layer_pe = choice.split('_')[-1]
                         out_name = f"{choice}_abs" if use_pe=='original' else f"{choice}_{use_pe}" # out4_1203 causal didn't converge.
