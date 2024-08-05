@@ -19,7 +19,7 @@ def run_training(out_name,
         # 'max_iters': 10000, # increase to see if hard-to-converge cases can converge
         'lr_decay_iters':  kwargs['max_iters'] if 'max_iters' in kwargs else 5000, # keep the original training schedule
         'general_seed': kwargs['general_seed'] if 'general_seed' in kwargs else 888,
-        'out_dir': 'outputs_permute',
+        'out_dir': kwargs['out_dir'],
         'pe_type': kwargs['use_pe'],  # or 'sin'
 
         'learning_rate': 0.00026441, # 0126 try to preven rank degen
@@ -128,7 +128,7 @@ def run_training(out_name,
 
 
 if __name__ == "__main__":
-    out_dir = "./outputs_permute"
+    out_dir = "./outputs_ref"
 
     
    
@@ -201,8 +201,8 @@ if __name__ == "__main__":
         "modp" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
         "modp_nc" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
 
-        "modclean_nope" : "python3 train.py pe_info/config2_pe/modclean_nope/jason_train_addition_bal.py ",
-        "modclean_original" : "python3 train.py pe_info/config2_pe/modclean_nope/jason_train_addition_bal.py ",
+        "modclean_nope" : "python3 train.py pe_info/config2_pe/modclean/jason_train_addition_bal.py ",
+        "modclean_original" : "python3 train.py pe_info/config2_pe/modclean/jason_train_addition_bal.py ",
 
 
         "mods": "python3 train.py pe_info/config2_pe/mods/jason_train_addition_bal.py ",
@@ -219,7 +219,7 @@ if __name__ == "__main__":
         for choice in [
                     # "addmod_6_f_original", "addmod_6_r_original", 
                        "modclean_nope",]:
-            causal_training = True # addmod can do causal training
+            causal_training = False # addmod can do causal training
             autoregressive_training = False
             batch_size = 4096 if not causal_training  else 256
             max_iters = 2000 if not causal_training else 5000
@@ -258,6 +258,7 @@ if __name__ == "__main__":
                         pool = Pool(1)
                         func = partial(run_training, out_name)
                         args = [{
+                            'out_dir': out_dir,
                             'not_causal': not_causal_list[i],
                             'use_residual': use_residual_list[i],
                             'n_layer': n_layers,

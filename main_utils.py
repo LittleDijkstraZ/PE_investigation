@@ -10,7 +10,7 @@ import pickle
 import copy
 import pandas as pd
 import tiktoken
-from collections import Counter
+
 # from model import GPTConfig, GPT
 from pe_info.model_nope import GPTConfig, GPT
 
@@ -117,9 +117,6 @@ def get_num_digits(a: str):
     if a == '':
         return 0
     else:
-        if ',' in a:
-            a = a.replace(',', '')
-
         if '.' in a: # if a contains a decimal point
             return len(a) - 1
         else:
@@ -258,51 +255,50 @@ def reverse_string(a: str) -> str:
     return a[::-1]
     
 
-def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_shot=False, algo_reason=False):
+def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binary=False, few_shot=False, algo_reason=False):
     if few_shot:
         if algo_reason:
             abc = abc.split('Target')[-2]
         abc = abc.strip().split('\n')[-1]
     
-    if 'amr' in abc:
-        operation = 'amr'
-    elif 'amf' in abc:
-        operation = 'amf'
-    elif 'sin(' in abc:
-        operation = 'sin'
-    elif 'sqrt(' in abc:
-        operation = 'sqrt'
-    elif '+' in abc:
-        operation = '+'
-    elif '-' in abc:
-        operation = '-'
-    elif '*' in abc:
-        operation = '*'
-    elif 'parity(' in abc:
-        operation = 'parity'
-    elif 'paridy(' in abc:
-        operation = 'paridy'
-    elif 'sumd(' in abc:
-        operation = 'sumd'
-    elif 'mod3(' in abc:
-        operation = 'mod3'
-    elif 'mods(' in abc:
-        operation = 'mods'
-    elif 'modp(' in abc:
-        operation = 'modp'
-    elif 'oddc(' in abc:
-        operation = 'oddc'
-    elif 'rev(' in abc:
-        operation = 'rev'
-    elif 'order(' in abc:
-        operation = 'order'
+    if operator is not None:
+        operation = operator
     else:
-        print(f'operation not found, abc: {abc}')
+        if 'amr' in abc:
+            operation = 'amr'
+        elif 'amf' in abc:
+            operation = 'amf'
+        elif 'sin(' in abc:
+            operation = 'sin'
+        elif 'sqrt(' in abc:
+            operation = 'sqrt'
+        elif '+' in abc:
+            operation = '+'
+        elif '-' in abc:
+            operation = '-'
+        elif '*' in abc:
+            operation = '*'
+        elif 'parity(' in abc:
+            operation = 'parity'
+        elif 'paridy(' in abc:
+            operation = 'paridy'
+        elif 'sumd(' in abc:
+            operation = 'sumd'
+        elif 'mod3(' in abc:
+            operation = 'mod3'
+        elif 'mods(' in abc:
+            operation = 'mods'
+        elif 'modp(' in abc:
+            operation = 'modp'
+        elif 'oddc(' in abc:
+            operation = 'oddc'
+        else:
+            print(f'operation not found, abc: {abc}')
 
     if operation in ['+', '-', '*']:
         [a,b] = abc.split(operation)
 
-    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'rev', 'order']:
+    elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'modclean']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
@@ -314,6 +310,7 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
         a = abc.strip().split('=')[0]
         a = a.replace(operation, '').replace('(', '').replace(')', '')
         b = ''
+    
         
 
     
@@ -378,15 +375,10 @@ def get_abc_new(abc: str, zero_pad=False, reverse_ab=False, binary=False, few_sh
     elif operation == 'amr':
         r, p, a1, a2 = a.split(',')
         c = (int(r)-(int(a1) +int(a2)*10) % int(p))%int(p)
-    elif operation == 'rev':
-        c = reverse_string(a)
-    elif operation == 'order':
-        a1, a2 = a.split(',')
-        c = []
-        for ai in a2:
-            c.append(a1.index(ai))
-        c = ''.join(map(str,c))
+    elif operation == 'modclean':
+        c = sum([int(i) for i in a[2:]]) % 3 # same as modp (for now)
 
+    
     if '\n' in b: b = b[:-1]
 
     return a,b,c,operation
@@ -666,8 +658,8 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
         start_ids = encode(line)
         x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
         len_x = len(x[0])
-        a,b,c,op = get_abc_new(line, zero_pad=zero_pad, reverse_ab=reverse_ab, binary=binary, few_shot=fewshot, algo_reason=algo_reason)
-        a_d, b_d, num_carry = get_num_digits(a), get_num_digits(b), numCarryOps(a, b, binary=binary)
+        a,b,c,op = get_abc_new(line, operator=operator, zero_pad=zero_pad, reverse_ab=reverse_ab, binary=binary, few_shot=fewshot, algo_reason=algo_reason)
+        a_d, b_d, num_carry = get_num_digits(a), get_num_digits(b), numCarryOps(a,b, binary=binary)
         prompt_length = len(start_ids)
         # NOTE: prompt_length != len(line) if we're not using character level tokenization
         input_tuple = (x, len(line), line[0], a, b, c, a_d, b_d, num_carry)
@@ -719,8 +711,6 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                         else:
                             if '\n' == c_hat[-1]: # handle cases where it ends with '\n'
                                 c_hat = c_hat[:-1]
-                            else:
-                                c_hat = c_hat.split('\n')[0]
                         
                     c_hat2 = c_hat
                     if zero_pad:
@@ -744,10 +734,8 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                     if is_number(c_hat2):
                         if '.' in c_hat2:
                             c_hat2 = float(c_hat2)
-                        elif type(c) == int:
-                            c_hat2 = int(c_hat2)
                         else:
-                            c_hat2 = c_hat2
+                            c_hat2 = int(c_hat2)
                     else: # c_hat2 is not a number
                         c = str(c)
 
@@ -777,7 +765,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'wrong  : {op}({a})={c_hat2}')
                                 print(f'correct: {op}({a})={c}')
 
-                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'rev', 'order']:
+                    elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -1100,7 +1088,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print('outputs(x): ', outcome)
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
-                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'rev', 'order']:
+                    elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1191,7 +1179,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = math.floor(y * 10000) / 10000
                     data_list.append((float(x), float(y), operator))
 
-                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'rev', 'order']:
+                elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
@@ -1270,7 +1258,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
                 
-                elif operator == 'modp':
+                elif operator in ['modp', 'modclean']:
                     x = random.randint(0, 99999+1)
                     x = str(x).zfill(5)
                     y = sum([int(digit) for digit in str(x)[2:]]) % 3
@@ -1285,35 +1273,13 @@ def get_data_list(filename=None, operator='+', delim=None):
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
                 
-                elif operator == 'rev':
-                    x = random.randint(0, 999999+1)
-                    x = str(x)
-                    y = x[::-1]
-                    # data_list.append((int(x), int(y), operator))
-                    data_list.append((x, y, operator))
-                    
-                elif operator == 'order':
-                    x = random.randint(0, 99999+1)
-                    digit_counts = Counter(str(x))
-                    while max(list(digit_counts.values())) > 1:
-                        x = random.randint(0, 99999+1)
-                        digit_counts = Counter(str(x))
-                    x = str(x)
-                    y = np.random.permutation(len(x))
-                    xs = ''.join([x[i] for i in y])
-                    x = ','.join(map(str, [x, xs]))
-                    y = ''.join(map(str, y))
-
-                    data_list.append((x, y, operator))
-
-                
                 elif operator == 'amf':
                     a1 = random.randint(0, 1000)
                     a2 = random.randint(0, 1000) 
                     p = 6
-                    x = ",".join(map(str,[a1, a2, p]))
+
                     y = (a1+a2)%p
-                    data_list.append((x, y, operator))
+                    data_list.append((a1, a2, p, y, operator))
 
                 elif operator == 'amr':
                     a1 = random.randint(0, 1000)
@@ -1322,8 +1288,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     r = (a1+a2)%p
                     y = a2%10
                     a2 = a2//10*10
-                    x = ",".join(map(str, [r, p, a1, a2]))
-                    data_list.append((x, y, operator))
+                    data_list.append((r, p, a1, a2, y, operator))
 
 
     return data_list
@@ -1767,7 +1732,7 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
             else:
                 data_str += output_str
 
-        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy', 'mods', 'rev', 'order']:
+        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy', 'mods']:
             x, y = data_tuple[0], data_tuple[1]
 
             if train:
@@ -1803,9 +1768,27 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
             else:
                 data_str += output_str
 
+        elif operator in ['modclean']:
+            x, y = data_tuple[0], data_tuple[1]
+
+            if train:
+                output_str = f"{x}={y}\n"
+            else:
+                output_str = f"{x}=\n"
+
+            if fewshot:
+                output_str = prompt + output_str + '\n'
+            if add_space:
+                output_str = add_spaces(output_str)
+
+            if idx == 0:
+                data_str = output_str
+            else:
+                data_str += output_str
+
         elif operator in ['amf']:
-            x, y = data_tuple[:2]
-            a1, a2, p = x.split(',')
+            a1, a2, p, y = data_tuple[:4]
+
             if train:
                 output_str = f"${operator}({a1},{a2},{p})={y}$\n"
             else:
@@ -1817,10 +1800,10 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
                 data_str += output_str
 
         elif operator in ['amr']:
-            x, y = data_tuple[:2]
-            r, p, a1, a2 = x.split(',')
+            r, p, a1, a2, y = data_tuple[:5]
+
             if train:
-                output_str = f"${operator}({r},{p},{a1},{a2})={y}$\n"
+                output_str = f"${operator}({r},{p},{a1},{a2})={y}$\n" 
             else:
                 output_str = f"${operator}({r},{p},{a1},{a2})=\n"
 
@@ -1840,6 +1823,8 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
                 data_str = output_str+'\n\n'
             else:
                 data_str += output_str+'\n\n'
+        else:
+            print('operator')
 
     return data_str
 
