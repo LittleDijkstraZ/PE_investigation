@@ -295,6 +295,8 @@ def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binar
             operation = 'oddc'
         elif 'rev(' in abc:
             operation = 'rev'
+        elif 'wherex(' in abc:
+            operation = 'wherex'
         elif 'order(' in abc:
             operation = 'order'
         else:
@@ -304,7 +306,7 @@ def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binar
         [a,b] = abc.split(operation)
 
     elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'modclean', 
-                       'rev', 'order']:
+                       'rev', 'order', 'wherex']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
@@ -385,6 +387,9 @@ def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binar
         c = sum([int(i) for i in a[len(a)//2:]]) % 3 # same as modp (for now)
     elif operation == 'rev':
         c = reverse_string(a)
+    elif operation == 'wherex':
+        a1, xt = a.split(',')
+        c = a1.index(xt)
     elif operation == 'order':
         a1, a2 = a.split(',')
         c = []
@@ -749,6 +754,8 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                             c_hat2 = float(c_hat2)
                         else:
                             c_hat2 = int(c_hat2)
+                            c = int(c)
+                            
                     else: # c_hat2 is not a number
                         c = str(c)
 
@@ -779,7 +786,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'correct: {op}({a})={c}')
 
                     elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean',
-                                'rev', 'order']:
+                                'rev', 'order', 'wherex']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -1103,7 +1110,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
                     elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean',
-                                'rev', 'order']:
+                                'rev', 'order', 'wherex']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1195,7 +1202,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     data_list.append((float(x), float(y), operator))
 
                 elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean',
-                                  'rev', 'order']:
+                                  'rev', 'order', 'wherex']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
@@ -1304,6 +1311,14 @@ def get_data_list(filename=None, operator='+', delim=None):
                     y = x[::-1]
                     # data_list.append((int(x), int(y), operator))
                     data_list.append((x, y, operator))
+
+                elif operator == 'wherex':
+                    x = random.randint(0, int('9'*9)+1)
+                    x = str(x)
+                    xt = np.random.choice(list(x))
+                    y = x.index(xt)
+                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, xt, y, operator))
                     
                 elif operator == 'order':
                     x = random.randint(0, 99999+1)
@@ -1778,7 +1793,7 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
             else:
                 data_str += output_str
 
-        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy', 'mods', 'rev', 'order']:
+        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy', 'mods', 'rev', 'order', 'wherex']:
             x, y = data_tuple[0], data_tuple[1]
 
             if train:
