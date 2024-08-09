@@ -141,7 +141,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
     #     + [[i for i in range(6)]]s
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(1, 3)]
+    seeds = [240+i for i in range(0, 1)]
 
     # use_residual_list_all = [[]] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
@@ -193,6 +193,7 @@ if __name__ == "__main__":
         "rev_nope": "python3 train.py pe_info/config2_pe/rev/jason_train_addition_bal.py ",
         "rev16_nope": "python3 train.py pe_info/config2_pe/rev/rev16.py ",
 
+        "wherex9_nope": "python3 train.py pe_info/config2_pe/wherex/wherex9.py ",
 
         "order_nope": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
         "order_original": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
@@ -222,7 +223,8 @@ if __name__ == "__main__":
                     # "addmod_6_f_original", "addmod_6_r_original", 
                     #    "modclean_nope",
                     # 'order_nope', 'rev_nope',
-                    'rev16_nope'
+                    # 'rev16_nope'
+                    'wherex9_nope',
                        ]:
             causal_training = True # addmod can do causal training
             autoregressive_training = False

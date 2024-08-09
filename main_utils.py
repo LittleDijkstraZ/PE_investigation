@@ -118,7 +118,7 @@ def get_num_digits(a: str):
     if a == '':
         return 0
     else:
-        if '.' in a: # if a contains a decimal point
+        if '.' in a or ',' in a: # if a contains a decimal point
             return len(a) - 1
         else:
             return len(str(int(a)))
@@ -319,9 +319,7 @@ def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binar
         a = a.replace(operation, '').replace('(', '').replace(')', '')
         b = ''
     
-        
-
-    
+            
 
     if a[0] == '$':
         a = a[1:]
@@ -1317,8 +1315,9 @@ def get_data_list(filename=None, operator='+', delim=None):
                     x = str(x)
                     xt = np.random.choice(list(x))
                     y = x.index(xt)
+                    x = x + ',' + xt
                     # data_list.append((int(x), int(y), operator))
-                    data_list.append((x, xt, y, operator))
+                    data_list.append((x, y, operator))
                     
                 elif operator == 'order':
                     x = random.randint(0, 99999+1)
