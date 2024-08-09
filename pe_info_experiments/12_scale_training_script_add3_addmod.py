@@ -221,11 +221,13 @@ if __name__ == "__main__":
         # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
         for choice in [
                     # "addmod_6_f_original", "addmod_6_r_original", 
-                    #    "modclean_nope",
-                    # 'order_nope', 'rev_nope',
-                    # 'rev16_nope'
+                    # 'order_nope', 
+                    'rev16_nope',
                     'wherex9_nope',
-                       ]:
+                    'add3_ref_nope',
+                    # 'modclean_nope',
+                    ]:
+            
             causal_training = True # addmod can do causal training
             autoregressive_training = False
             batch_size = 4096 if not causal_training  else 256
@@ -239,8 +241,6 @@ if __name__ == "__main__":
             for use_residual_list in [use_residual_list_all]: # use_residual_list1, use_residual_list2, 
                 
 
-                # no_att_residual_list = [True]
-                # no_mlp_residual_list = [True]
                 bval = True if 'nc' in choice else False
                 not_causal_list = [bval] * len(use_residual_list)               
 
@@ -248,12 +248,6 @@ if __name__ == "__main__":
                 from multiprocessing import Pool
                 from functools import partial
                 
-
-                # for seed in [222, 333, 444]:
-                # for use_pe in ['nope', 'original']: # 'original''nope',
-                # for use_pe in ['original', 'nope']: # 'original''nope',
-                # for use_pe in ['nope']: # 'original''nope',
-                # for use_pe in ['original', 'nope']: # 'original''nope',
                 for n_layers in [6]:
                     for use_pe in [choice.split('_')[-1]]: # 'original''nope',
                         layer_pe = choice.split('_')[-1]
