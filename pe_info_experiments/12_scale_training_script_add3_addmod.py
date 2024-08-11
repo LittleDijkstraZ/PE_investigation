@@ -1,12 +1,13 @@
 # Define the parameters in a dictionary
 import os
 import glob
-from click import command
 import pandas as pd
 from functools import partial
 
-from sympy import use
-from torch import permute
+
+# do a multi-processing, using 2 processes at a time
+from multiprocessing import Pool
+from functools import partial
 
 
 def run_training(out_name,
@@ -100,6 +101,7 @@ def run_training(out_name,
     kwarg_names = [
         'use_flash', 
         'n_layer', 
+        'n_embd',
         'no_att_residual', 
         'no_mlp_residual', 
         'batch_size', 
@@ -128,7 +130,7 @@ def run_training(out_name,
 
 
 if __name__ == "__main__":
-    out_dir = "./outputs_ref"
+    out_dir_base = "./outputs_ref"
 
     
    
@@ -190,7 +192,7 @@ if __name__ == "__main__":
         "addmod_6_f_original": "python3 train.py pe_info/config2_pe/addmod_6_f/jason_train_addition_bal.py ",
         "addmod_6_r_original": "python3 train.py pe_info/config2_pe/addmod_6_r/jason_train_addition_bal.py ",
         "rev_original": "python3 train.py pe_info/config2_pe/rev/jason_train_addition_bal.py ",
-        "rev_nope": "python3 train.py pe_info/config2_pe/rev/jason_train_addition_bal.py ",
+        "rev_nope": "python3 train.py pe_info/config2_pe/rev/rev6.py ",
         "rev16_nope": "python3 train.py pe_info/config2_pe/rev/rev16.py ",
 
         "wherex9_nope": "python3 train.py pe_info/config2_pe/wherex/wherex9.py ",
@@ -216,77 +218,86 @@ if __name__ == "__main__":
         "sumd_c": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
-    for seed in seeds:
+    for n_layers in [2]:
+        for n_embd in [786*2]:
+            for seed in seeds:
+                # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
+                for choice in [
+                            # "addmod_6_f_original", "addmod_6_r_original", 
+                            # 'rev_nope', 
+                            'rev16_nope',
+                            # 'wherex9_nope',
+                            # 'add3_ref_nope',
+                            # 'modclean_nope',
+                            ]:
+                    causal_training = True # addmod can do causal training
 
-        # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
-        for choice in [
-                    # "addmod_6_f_original", "addmod_6_r_original", 
-                    # 'order_nope', 
-                    'rev16_nope',
-                    'wherex9_nope',
-                    'add3_ref_nope',
-                    # 'modclean_nope',
-                    ]:
-            
-            causal_training = True # addmod can do causal training
-            autoregressive_training = False
-            batch_size = 4096 if not causal_training  else 256
-            max_iters = 2000 if not causal_training else 5000
-            # learning_rate = 0.000026441 if not causal_training else  0.000026441
-            learning_rate = 0.0000016441 if not causal_training else  0.0000016441
+                # for choice in [
+                #     # "addmod_6_f_original", "addmod_6_r_original", 
+                #     'modclean_nope', 
+                #     'wherex9_nope',
+                #     # 'modclean_nope',
+                #     ]:
+                #     causal_training = False # addmod can do causal training
 
-            warmup_iters = 400 if not causal_training else 400
+                    autoregressive_training = False
+                    batch_size = 4096 if not causal_training  else 256 
+                    max_iters = 2000 if not causal_training else 5000
+                    # learning_rate = 0.000026441 if not causal_training else  0.000026441
+                    learning_rate = 0.0000016441 if not causal_training else  0.0000016441
 
+                    warmup_iters = 400 if not causal_training else 400
 
-            for use_residual_list in [use_residual_list_all]: # use_residual_list1, use_residual_list2, 
-                
+                    
+                    batch_size //= 2 if n_layers > 12 else 1
 
-                bval = True if 'nc' in choice else False
-                not_causal_list = [bval] * len(use_residual_list)               
+                    for use_residual_list in [use_residual_list_all]: # use_residual_list1, use_residual_list2, 
 
-                # do a multi-processing, using 2 processes at a time
-                from multiprocessing import Pool
-                from functools import partial
-                
-                for n_layers in [6]:
-                    for use_pe in [choice.split('_')[-1]]: # 'original''nope',
-                        layer_pe = choice.split('_')[-1]
-                        out_name = f"{choice}_abs" if use_pe=='original' else f"{choice}_{use_pe}" # out4_1203 causal didn't converge.
-                        if layer_pe != use_pe:
-                            out_name += f"_layer_pe"
-                        os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
+                        bval = True if 'nc' in choice else False
+                        not_causal_list = [bval] * len(use_residual_list)               
 
-                        pool = Pool(1)
-                        func = partial(run_training, out_name)
-                        args = [{
-                            'out_dir': out_dir,
-                            'not_causal': not_causal_list[i],
-                            'use_residual': use_residual_list[i],
-                            'n_layer': n_layers,
-                            'use_pe': use_pe,
-                            'general_seed': seed,
-                            'choice': choice,
+                        for use_pe in [choice.split('_')[-1]]: # 'original''nope',
 
-                            'causal_training': causal_training,
-                            'batch_size': batch_size, 
-                            'max_iters': max_iters,
-                            'learning_rate': learning_rate,
-                            'warmup_iters': warmup_iters,
-                            
-                            'command': commands_dict[choice],  
-                            'save_best_loss': False,
-                            'save_final': False,
-                            'autoregressive_training': autoregressive_training,
-                            'save_all_intermediate': False,
+                            layer_pe = choice.split('_')[-1]
+                            out_name = f"{choice}_abs" if use_pe=='original' else f"{choice}_{use_pe}" # out4_1203 causal didn't converge.
+                            if layer_pe != use_pe:
+                                out_name += f"_layer_pe"
+                            out_dir = out_dir_base + f'_{n_layers}'
+                            os.makedirs(f"{out_dir}/{out_name}", exist_ok=True)
 
-                            'layerwise_pe': False,
-                            'layer_pe': layer_pe,
-                            # 'use_flesh': True,
-                            # 'layerwise_pe_list': layerwise_pe_list[i],
-                        } for i in range(len(use_residual_list))]
-                        # for arg in args:
-                            # func(arg)
-                        pool.map(func, args)
-                        pool.close()   
+                            pool = Pool(1)
+                            func = partial(run_training, out_name)
+                            args = [{
+                                'out_dir': out_dir,
+                                'not_causal': not_causal_list[i],
+                                'use_residual': use_residual_list[i],
+                                'n_layer': n_layers,
+                                'n_embd': n_embd,
+                                'use_pe': use_pe,
+                                'general_seed': seed,
+                                'choice': choice,
 
-                    # implement a teacher forcing
+                                'causal_training': causal_training,
+                                'batch_size': batch_size, 
+                                'max_iters': max_iters,
+                                'learning_rate': learning_rate,
+                                'warmup_iters': warmup_iters,
+                                
+                                'command': commands_dict[choice],  
+                                'save_best_loss': False,
+                                'save_final': False,
+                                'autoregressive_training': autoregressive_training,
+                                'save_all_intermediate': False,
+
+                                'layerwise_pe': False,
+                                'layer_pe': layer_pe,
+                                # 'use_flesh': True,
+                                # 'layerwise_pe_list': layerwise_pe_list[i],
+                            } for i in range(len(use_residual_list))]
+                            # for arg in args:
+                                # func(arg)
+                            pool.map(func, args)
+                            pool.close()
+                    
+
+                        # implement a teacher forcing

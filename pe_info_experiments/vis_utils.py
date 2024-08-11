@@ -18,6 +18,20 @@ def levenshteinDistance(s1, s2):
         distances = distances_
     return distances[-1]
 
+def count_inversions(nums):
+    n = len(nums)
+    dp = [0] * n
+    inversion_count = 0
+
+    for j in range(1, n):
+        for i in range(j):
+            if nums[i] >= nums[j]:
+                dp[j] += 1
+    
+    inversion_count = sum(dp)
+    
+    return inversion_count
+
 def get_PE_tendency(mat, as_list=False):
     r = 0
     r2 = 0
@@ -27,6 +41,7 @@ def get_PE_tendency(mat, as_list=False):
     r5_counts = 0
     r6 = 0
     r6_count = 0
+    r7_count = 0
     mat = mat.detach().cpu().numpy() if isinstance(mat, torch.Tensor) else mat
     for lidx, layer in enumerate(mat[1:]):
         r += (np.diff(layer[:lidx+1], axis=0) > 0).sum()
@@ -60,6 +75,8 @@ def get_PE_tendency(mat, as_list=False):
         if np.isnan(r_value): continue
         r6 += pearsonr(original_order, right_right_order)[0]
         r6_count += 1
+
+        r7_count += count_inversions(valid_layer)
         # r5 += pearsonr(original_order, cur_order)[0]
 
     max_r = np.arange(mat.shape[0]-1).sum()
@@ -76,10 +93,13 @@ def get_PE_tendency(mat, as_list=False):
 
     t6 = round(r6/r6_count, 2)
 
+    max_r7 = sum([ n*(n-1)//2 for n in np.arange(mat.shape[0]-1)])
+    t7 = round((max_r7-r7_count) / max_r7, 2)
+
     if not as_list:
-        return f'({t1},{t2},{t3},{t4},{t5},{t6})'
+        return f'({t1},{t2},{t3},{t4},{t5},{t6},{t7})'
     else:
-        return [t1, t2, t3, t4, t5, t6]
+        return [t1, t2, t3, t4, t5, t6, t7]
 
 def generate_tendency_map(mat):
     mat = mat.detach().cpu().numpy() if isinstance(mat, torch.Tensor) else mat

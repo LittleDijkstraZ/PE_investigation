@@ -1,0 +1,1 @@
+tar -czvf saved_plots_sim.tar ./saved_plots_sim/*
