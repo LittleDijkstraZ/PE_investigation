@@ -196,6 +196,9 @@ if __name__ == "__main__":
         "rev16_nope": "python3 train.py pe_info/config2_pe/rev/rev16.py ",
 
         "wherex9_nope": "python3 train.py pe_info/config2_pe/wherex/wherex9.py ",
+        'wherex7_nope': "python3 train.py pe_info/config2_pe/wherex/wherex7.py ",
+        "wherex78x7_nope": "python3 train.py pe_info/config2_pe/wherex/wherex78x7.py ",
+
 
         "order_nope": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
         "order_original": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
@@ -218,15 +221,15 @@ if __name__ == "__main__":
         "sumd_c": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
-    for n_layers in [2]:
-        for n_embd in [786*2]:
+    for n_layers in [3]:
+        for n_embd in [384]:
             for seed in seeds:
                 # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
                 for choice in [
                             # "addmod_6_f_original", "addmod_6_r_original", 
                             # 'rev_nope', 
-                            'rev16_nope',
-                            # 'wherex9_nope',
+                            # 'rev16_nope',
+                            'wherex78x7_nope',
                             # 'add3_ref_nope',
                             # 'modclean_nope',
                             ]:
