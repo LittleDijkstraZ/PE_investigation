@@ -143,7 +143,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
     #     + [[i for i in range(6)]]s
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(0, 1)]
+    seeds = [240+i for i in range(1, 2)]
 
     # use_residual_list_all = [[]] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
@@ -194,6 +194,7 @@ if __name__ == "__main__":
         "rev_original": "python3 train.py pe_info/config2_pe/rev/jason_train_addition_bal.py ",
         "rev_nope": "python3 train.py pe_info/config2_pe/rev/rev6.py ",
         "rev16_nope": "python3 train.py pe_info/config2_pe/rev/rev16.py ",
+        "rev16_original": "python3 train.py pe_info/config2_pe/rev/rev16.py ",
 
         "wherex9_nope": "python3 train.py pe_info/config2_pe/wherex/wherex9.py ",
         'wherex7_nope': "python3 train.py pe_info/config2_pe/wherex/wherex7.py ",
@@ -204,6 +205,8 @@ if __name__ == "__main__":
         "order_original": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
 
         "mod3" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
+        "mod3_nope" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
+
         "mod3_nc" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
 
         "modp" : "python3 train.py pe_info/config2_pe/modp/jason_train_addition_bal.py ",
@@ -221,17 +224,19 @@ if __name__ == "__main__":
         "sumd_c": "python3 train.py pe_info/config2_pe/sumd/jason_train_addition_bal.py ",
         "oddc": "python3 train.py pe_info/config2_pe/oddc/jason_train_addition_bal.py "
     }
-    for n_layers in [3]:
+    for n_layers in [6]:
         for n_embd in [384]:
             for seed in seeds:
                 # for choice in ["mods", "mods_nc", "mod3", "mod3_nc", "modp", "modp_nc",]:
                 for choice in [
                             # "addmod_6_f_original", "addmod_6_r_original", 
                             # 'rev_nope', 
+                            # 'rev16_original',
                             # 'rev16_nope',
-                            'wherex78x7_nope',
+
+                            # 'wherex78x7_nope',
                             # 'add3_ref_nope',
-                            # 'modclean_nope',
+                            'mod3_nope',
                             ]:
                     causal_training = True # addmod can do causal training
 

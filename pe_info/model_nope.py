@@ -620,7 +620,7 @@ class GPT(nn.Module):
         if scheme[0] == 'normal':
             nn.init.normal_(weights, mean=scheme[1], std=scheme[2]) # 0, 0.02
         elif scheme[0] == 'xavier':
-            nn.init.xavier_uniform_(weights)
+            nn.init.xavier_uniform_(weights, gain=scheme[1]) # 1
         elif scheme[0] == 'kaiming':
             nn.init.kaiming_uniform_(weights, a=scheme[1]) # math.sqrt(5)
         elif scheme[0] == 'uniform':
