@@ -93,7 +93,7 @@ def get_PE_tendency(mat, as_list=False):
 
     t6 = round(r6/r6_count, 2)
 
-    max_r7 = sum([ n*(n-1)//2 for n in np.arange(mat.shape[0]-1)])
+    max_r7 = sum([ (n+1)*(n)//2 for n in np.arange(mat.shape[0]-1)])
     t7 = round((max_r7-r7_count) / max_r7, 2)
 
     if not as_list:
