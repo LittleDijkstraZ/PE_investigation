@@ -143,7 +143,7 @@ if __name__ == "__main__":
     #     + [[i for i in range(6) if i not in [j,]] for j in range(6)] \
     #     + [[i for i in range(6)]]s
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
-    seeds = [240+i for i in range(1, 2)]
+    seeds = [240+i for i in range(0, 1)]
 
     # use_residual_list_all = [[]] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
@@ -199,6 +199,8 @@ if __name__ == "__main__":
         "wherex9_nope": "python3 train.py pe_info/config2_pe/wherex/wherex9.py ",
         'wherex7_nope': "python3 train.py pe_info/config2_pe/wherex/wherex7.py ",
         "wherex78x7_nope": "python3 train.py pe_info/config2_pe/wherex/wherex78x7.py ",
+        
+        "identifyx_nope": "python3 train.py pe_info/config2_pe/identifyx/identifyx.py ",
 
 
         "order_nope": "python3 train.py pe_info/config2_pe/order/jason_train_addition_bal.py ",
@@ -206,6 +208,8 @@ if __name__ == "__main__":
 
         "mod3" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
         "mod3_nope" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
+        "mod3_original" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
+
 
         "mod3_nc" : "python3 train.py pe_info/config2_pe/mod3/jason_train_addition_bal.py ",
 
@@ -236,7 +240,7 @@ if __name__ == "__main__":
 
                             # 'wherex78x7_nope',
                             # 'add3_ref_nope',
-                            'mod3_nope',
+                            'identifyx_nope',
                             ]:
                     causal_training = True # addmod can do causal training
 

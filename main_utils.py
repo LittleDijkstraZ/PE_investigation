@@ -297,6 +297,9 @@ def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binar
             operation = 'rev'
         elif 'wherex(' in abc:
             operation = 'wherex'
+        elif 'identify(' in abc:
+            operation = 'identify'
+        
         elif 'order(' in abc:
             operation = 'order'
         else:
@@ -306,7 +309,7 @@ def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binar
         [a,b] = abc.split(operation)
 
     elif operation in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'modclean', 
-                       'rev', 'order', 'wherex']:
+                       'rev', 'order', 'wherex', 'identify']:
         if 'Input:' in abc:
             a = abc.split('Input:\n')[-1].split('\nTarget')[0]
         else:
@@ -388,6 +391,9 @@ def get_abc_new(abc: str, operator=None, zero_pad=False, reverse_ab=False, binar
     elif operation == 'wherex':
         a1, xt = a.split(',')
         c = a1.index(xt)
+    elif operation == 'identify':
+        a1, xt = a.split(',')
+        c = int(xt in a1)
     elif operation == 'order':
         a1, a2 = a.split(',')
         c = []
@@ -784,7 +790,7 @@ def evaluate_addition_batch(config, model, ctx, encode, decode, verbose=False, n
                                 print(f'correct: {op}({a})={c}')
 
                     elif op in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean',
-                                'rev', 'order', 'wherex']:
+                                'rev', 'order', 'wherex', 'identify']:
                         if c==c_hat2:
                             correct+=1
                             carry_dictionary[f'carry{num_carry}_correct']+=1
@@ -1108,7 +1114,7 @@ def evaluate_addition_fewshot_batch(config, model, ctx, encode, decode, verbose=
                                 print(f'wrong  : {a}{op}{b}={c_hat2}')
                                 print(f'correct: {a}{op}{b}={c}')
                     elif op in ['sin', 'sqrt', 'parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean',
-                                'rev', 'order', 'wherex']:
+                                'rev', 'order', 'wherex', 'identify']:
                         if type(c)!= str and abs(c-c_hat2)<= eps:
                             correct+=1
                             acc_list.append(1)
@@ -1200,7 +1206,7 @@ def get_data_list(filename=None, operator='+', delim=None):
                     data_list.append((float(x), float(y), operator))
 
                 elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'modp', 'paridy', 'mods', 'amf', 'amr', 'modclean',
-                                  'rev', 'order', 'wherex']:
+                                  'rev', 'order', 'wherex', 'identify']:
                     x = line.strip().split('=')[0]
                     x = x.replace(operator, '').replace('(', '').replace(')', '')
                     y = line.strip().split('=')[1]
@@ -1316,7 +1322,15 @@ def get_data_list(filename=None, operator='+', delim=None):
                     xt = np.random.choice(list(x))
                     y = x.index(xt)
                     x = x + ',' + xt
-                    # data_list.append((int(x), int(y), operator))
+                    data_list.append((x, y, operator))
+
+                elif operator == 'identify':
+                    # x = random.randint(0, 999999+1)
+                    x = random.randint(0, int('9'*9)+1)
+                    x = str(x)
+                    xt = str(np.random.choice(range(10)))
+                    y = int(xt in x)
+                    x = x + ',' + xt
                     data_list.append((x, y, operator))
                     
                 elif operator == 'order':
@@ -1792,7 +1806,7 @@ def generate_data_str(data_list, operator='+', format='plain', train=True, shuff
             else:
                 data_str += output_str
 
-        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy', 'mods', 'rev', 'order', 'wherex']:
+        elif operator in ['parity', 'sumd', 'oddc', 'mod3', 'paridy', 'mods', 'rev', 'order', 'wherex', 'identify']:
             x, y = data_tuple[0], data_tuple[1]
 
             if train:
