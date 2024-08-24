@@ -240,7 +240,9 @@ if __name__ == "__main__":
 
                             # 'wherex78x7_nope',
                             # 'add3_ref_nope',
-                            'identifyx_nope',
+                            'wherex9_nope',
+                            # 'identifyx_nope',
+
                             ]:
                     causal_training = True # addmod can do causal training
 
