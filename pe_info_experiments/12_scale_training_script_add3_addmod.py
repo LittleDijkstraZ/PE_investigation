@@ -145,7 +145,7 @@ if __name__ == "__main__":
     # use_residual_list3 = [[i for i in range(6) if i not in [j,]] for j in range(2, 6)]
     seeds = [240+i for i in range(0, 1)]
 
-    # use_residual_list_all = [[]] \
+    # use_residual_list_all = [[]] 
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3, j+4]] for j in range(2)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2, j+3]] for j in range(3)] \
     #     + [[i for i in range(6) if i not in [j, j+1, j+2]] for j in range(4)] \
@@ -236,13 +236,12 @@ if __name__ == "__main__":
                             # "addmod_6_f_original", "addmod_6_r_original", 
                             # 'rev_nope', 
                             # 'rev16_original',
-                            # 'rev16_nope',
-
+                            'rev16_nope',
+                            'order_nope',
                             # 'wherex78x7_nope',
-                            # 'add3_ref_nope',
+                            'add3_ref_nope',
                             'wherex9_nope',
                             # 'identifyx_nope',
-
                             ]:
                     causal_training = True # addmod can do causal training
 

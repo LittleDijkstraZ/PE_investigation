@@ -18,3 +18,5 @@ def set_seed(seed):
 from .model_utils import *
 from .vis_utils import *
 from .get_batch import *
+from .load_config_and_data import *
+from .get_corr import *

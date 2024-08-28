@@ -93,7 +93,7 @@ data_format = 'plain'  # 'plain' or 'reverse' or 'algo_reasoning'
 vocabulary = 'all_ascii_chars'
 meta_path_specified = False  # use saved meta_file (False if data_type='text')
 eps = 0
-tokenizer = 'char'  # by default, use char level tokenizer. but for pretrained models, use openai tokenizer eg: 'gpt2'
+tokenizer_type = 'char'  # by default, use char level tokenizer. but for pretrained models, use openai tokenizer eg: 'gpt2'
 
 simple = False
 random_A = False

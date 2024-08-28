@@ -1,3 +1,5 @@
+
+
 import plotly.graph_objs as go
 from sklearn.decomposition import PCA
 
@@ -17,11 +19,6 @@ def load_checkpoint(ckpt_path,
     checkpoint = torch.load(ckpt_path, map_location=device)
 
     model_args = checkpoint['model_args']
-    # for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-    # model_args[k] = checkpoint_model_args[k]
-    # for k in checkpoint_model_args:
-    #         model_args[k] = checkpoint_model_args[k]
-    # create the model
     original_gptconf = model_config(**model_args)
     gptconf = model_config(**model_args)
     if return_model:
@@ -41,7 +38,7 @@ def load_checkpoint(ckpt_path,
             for k in init_additional_config:
                 original_gptconf.__dict__[k] = init_additional_config[k]
             model = model_type(original_gptconf)
-   
+
     if return_config:
         if return_model:
             return model, gptconf
@@ -53,17 +50,18 @@ def load_checkpoint(ckpt_path,
 
 def generate_output(model, 
                     prompt, 
+                    encode,
+                    decode,
                     max_new_tokens=5, 
                     attn_mask=None, 
-                    top_k=None):
-    # temperature = 0.8
-    # top_k = 200
+                    top_k=None,
+                    device='cuda',
+                    ):
 
     model.eval()
     model.to(device)
     if compile:
         model = torch.compile(model)  # requires PyTorch 2.0 (optional)
-    # run generation
 
     start_ids = encode(prompt)
     x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
@@ -75,7 +73,7 @@ def generate_output(model,
             attn_mask = None
 
             y = model.generate(x, max_new_tokens,
-                               attn_mask=attn_mask, top_k=top_k)
+                            attn_mask=attn_mask, top_k=top_k)
 
     return decode(y[0].tolist())
 
@@ -109,9 +107,7 @@ def PCA_analysis(prompt, embs, out_text, config_dir):
 
     fig = go.Figure(data=data, layout=layout)
     fig.show()
-#   out_num = out_text.split('=')[-1][:-1]
-#   eqn = out_text.split('=')[0]
-#   out_text = eqn+'='+out_num[::-1]+out_text[-1]
+
     print(out_text)
     # print(new_x)
     print(pca.explained_variance_ratio_)
