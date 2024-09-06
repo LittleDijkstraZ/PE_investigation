@@ -32,7 +32,7 @@ def count_inversions(nums):
     
     return inversion_count
 
-def get_PE_tendency(mat, as_list=False):
+def get_PE_tendency(mat, as_list=False, starting_row=1):
     r = 0
     r2 = 0
     r3 = 0
@@ -43,7 +43,8 @@ def get_PE_tendency(mat, as_list=False):
     r6_count = 0
     r7_count = 0
     mat = mat.detach().cpu().numpy() if isinstance(mat, torch.Tensor) else mat
-    for lidx, layer in enumerate(mat[1:]):
+    for lidx, layer in enumerate(mat[starting_row:]):
+        lidx = lidx + starting_row-1
         r += (np.diff(layer[:lidx+1], axis=0) > 0).sum()
         r3 += (np.diff(layer[:lidx+1], axis=0) > 0).sum()
         r3 -= (np.diff(layer[:lidx+1], axis=0) <= 0).sum()
@@ -54,8 +55,8 @@ def get_PE_tendency(mat, as_list=False):
         r4 += c2p - c2m
 
         valid_layer = layer[:lidx+1]
-        if len(valid_layer)<3: 
-            continue
+        # if len(valid_layer)<3: 
+        #     continue
 
         # cur_order = valid_layer
         # original_order = valid_layer[np.argsort(valid_layer)]
@@ -66,15 +67,18 @@ def get_PE_tendency(mat, as_list=False):
 
 
         right_order = np.argsort(valid_layer-np.arange(len(valid_layer))*1e-5)
-        right_right_order = np.argsort(right_order)
+
         original_order = np.arange(len(valid_layer))
         edit_distance = levenshteinDistance(right_order, original_order)
+        
         r5 += edit_distance
         r5_counts += len(valid_layer)
-        r_value = pearsonr(original_order, right_right_order)[0]
-        if np.isnan(r_value): continue
-        r6 += pearsonr(original_order, right_right_order)[0]
-        r6_count += 1
+        if len(valid_layer)>3:
+            right_right_order = np.argsort(right_order)
+            r_value = pearsonr(original_order, right_right_order)[0]
+            if not np.isnan(r_value):
+                r6 += pearsonr(original_order, right_right_order)[0]
+                r6_count += 1
 
         r7_count += count_inversions(valid_layer)
         # r5 += pearsonr(original_order, cur_order)[0]

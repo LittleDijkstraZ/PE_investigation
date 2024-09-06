@@ -197,6 +197,8 @@ if __name__ == "__main__":
         "rev16_original": "python3 train.py pe_info/config2_pe/rev/rev16.py ",
 
         "wherex9_nope": "python3 train.py pe_info/config2_pe/wherex/wherex9.py ",
+        "wherex9_nc_original": "python3 train.py pe_info/config2_pe/wherex/wherex9.py ",
+
         'wherex7_nope': "python3 train.py pe_info/config2_pe/wherex/wherex7.py ",
         "wherex78x7_nope": "python3 train.py pe_info/config2_pe/wherex/wherex78x7.py ",
         
@@ -236,14 +238,15 @@ if __name__ == "__main__":
                             # "addmod_6_f_original", "addmod_6_r_original", 
                             # 'rev_nope', 
                             # 'rev16_original',
-                            'rev16_nope',
-                            'order_nope',
+                            # 'rev16_nope',
+                            # 'order_nope',
                             # 'wherex78x7_nope',
-                            'add3_ref_nope',
-                            'wherex9_nope',
+                            # 'add3_ref_nope',
+                            # 'wherex9_nope',
+                            'wherex9_nc_original',
                             # 'identifyx_nope',
                             ]:
-                    causal_training = True # addmod can do causal training
+                    causal_training = False # addmod can do causal training
 
                 # for choice in [
                 #     # "addmod_6_f_original", "addmod_6_r_original", 

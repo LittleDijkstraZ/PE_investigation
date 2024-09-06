@@ -1,6 +1,4 @@
 
-
-
 fixed_length_dict = {
     'add':9,
     'rev16':22,
@@ -10,8 +8,11 @@ fixed_length_dict = {
     'identify':22,
 }
 
-total_samples = 1024
-sample_num = 1024
+total_samples = 256
+equation_num = 1
+
+folder_name = f'saved_plots_sim_{equation_num}_init'
+
 
 equal_distancing_exp = False
 use_1_sample = False
@@ -56,24 +57,19 @@ if __name__ == '__main__':
 
     import functools
 
-    from sqlalchemy import func
     import torch
-    from torch.nn.parallel import DistributedDataParallel as DDP
-    from torch.distributed import init_process_group, destroy_process_group
 
     from IPython.utils import io
     from tqdm.auto import tqdm
 
     import glob
     import yaml
-    import re
 
 
     import numpy as np
     import matplotlib.pyplot as plt
     from sklearn.metrics.pairwise import cosine_similarity
 
-    import pe_info
     from pe_info.model_nope import GPTConfig as GPTConfig_nope, GPT as GPT_nope
     from main_utils import *
     from vis_utils import get_batch_original 
@@ -86,14 +82,14 @@ if __name__ == '__main__':
     # os.chdir('../')
 
     task_config_dict = {
-        'add': './pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py',
-        'order' : './pe_info/config2_pe/order/jason_train_addition_bal.py',
-        'rev16' : './pe_info/config2_pe/rev/rev16.py',
+        # 'add': './pe_info/config2_pe/addition/reverse/jason_train_addition_bal.py',
+        # 'order' : './pe_info/config2_pe/order/jason_train_addition_bal.py',
+        # 'rev16' : './pe_info/config2_pe/rev/rev16.py',
         'wherex9' : './pe_info/config2_pe/wherex/wherex9.py',
-
     }
-        
 
+    all_df_cm = []
+    all_df_norm = []
     for task_type in task_config_dict:
         try:
             exec(open('./pe_info_experiments/vis_params.py').read())
@@ -113,10 +109,8 @@ if __name__ == '__main__':
             answer_length = 1
 
             encode, decode = get_encode_decode(meta_path, tokenizer=tokenizer_type)
-
             get_batch = functools.partial(get_batch_original, train_data=train_data, val_data=val_data, data_encoder=data_encoder,)
         
-
             exp_list = glob.glob('./outputs_ref_*/*/*') 
             exp_list = [p for p in exp_list if task_type in p]
             exp_list = [[x, x.split('/')[-1]] for x in exp_list] 
@@ -174,89 +168,91 @@ if __name__ == '__main__':
                     
                     # add the initialized model
                     set_seed(np.random.randint(0,200))
-                    for init_scheme in [
-                                        'default',
-                                        # # "('normal',0,0.002)", 
-                                        # "('normal',0,0.02)",
-                                        # # "('normal',0,0.2)",
-                                        # # "('normal',0,2)", 
-                                        # # "('normal',4,0.02)",
-                                        # # "('normal',8,0.02)",
-                                        # # "('normal',100,0.02)",                        
-                                        # '("uniform",-0.02,0.02)', 
-                                        # '("uniform",-0.001,0.001)', 
-
-                                        # '("uniform",-1,1)', 
-                                        # '("uniform",-10,10)', 
-
-                                        # '(xavier,1)'
-                                        ]:
-
-                        ckpt = all_ckpts[0]
-                        with io.capture_output() as captured:
-                            model, gptconfig = load_checkpoint(
-                                ckpt,
-                                GPTConfig_nope,
-                                GPT_nope,
-                                device="cuda" if torch.cuda.is_available() else "cpu",
-                                return_config=True,
-                                init=True,
-                                init_additional_config={
-                                    'init_scheme': init_scheme,
-                                },
-                            )
-
-                        model.eval()
-                        model.to(device)
-                        model_list.append(model)
-                        try:
-                            iter_num = int(ckpt.split('_')[-1].split('.')[0])
-                            convergence = 0
-                            cur_model_name = 'acc='+str(int(convergence))+ '_' \
-                                + '/'.join(ckpt.split('/')[3:]).replace(str(iter_num), '0') \
-                                + f'_nembd={gptconfig.n_embd}_nlayers={gptconfig.n_layer}' + f'_{init_scheme}'
-                        except:
-                            cur_model_name = 'acc=0'+ '_' \
-                                + '/'.join(ckpt.split('/')[3:]) \
-                                + f'_nembd={gptconfig.n_embd}_nlayers={gptconfig.n_layer}' + f'_Init_{init_scheme}'
-                        useful_name_list.append(cur_model_name)
+                    
                         
                     # for ckpt in all_ckpts[len(all_ckpts)//2:len(all_ckpts)//2+1] + all_ckpts[-1:]:
 
-                    '''get trained model results'''
-                    # for ckpt in all_ckpts[-1:]:
+                    # '''get trained model results'''
+                    # # for ckpt in all_ckpts[-1:]:
 
                     for ckpt in all_ckpts:
+                        for init_scheme in [
+                                        # 'default',
+                                        "('normal',0,0.0002)", 
+                                        "('normal',0,0.002)", 
+                                        "('normal',0,0.02)",
+                                        "('normal',0,0.08)",
+                                        "('normal',0,0.2)",
+                                        "('normal',0,2)", 
+                                        # # "('normal',4,0.02)",
+                                        # # "('normal',8,0.02)",
+                                        # # # "('normal',100,0.02)",        
+                                        # # '("uniform",-0.001,0.001)', 
+                                        # '("uniform",-0.02,0.02)', 
+                                        # # '("uniform",-1,1)', 
+                                        # # '("uniform",-10,10)', 
+                                        # '("xavier_normal",1)',
+                                        # '("xavier_uniform",1)',
+                                        # '("kaiming",1)'
+                                        ]:
 
-                        with io.capture_output() as captured:
-                            model, gptconfig = load_checkpoint(
-                                ckpt,
-                                GPTConfig_nope,
-                                GPT_nope,
-                                device="cuda" if torch.cuda.is_available() else "cpu",
-                                return_config=True,
-                                init=model_init,
-                                init_additional_config=init_additional_config,
-                            )
-                            if small_dim:
-                                gptconfig.n_head = 1
-                                # gptconfig.not_causal = True
-                                gptconfig.n_embd = 16
-                                model = GPT_nope(gptconfig)
-                                            
+                            with io.capture_output() as captured:
+                                model, gptconfig = load_checkpoint(
+                                    ckpt,
+                                    GPTConfig_nope,
+                                    GPT_nope,
+                                    device="cuda" if torch.cuda.is_available() else "cpu",
+                                    return_config=True,
+                                    init=True,
+                                    init_additional_config={
+                                        'init_scheme': init_scheme,
+                                    },
+                                )
+
                             model.eval()
                             model.to(device)
                             model_list.append(model)
                             try:
                                 iter_num = int(ckpt.split('_')[-1].split('.')[0])
-                                convergence = df.loc[df['iter']==iter_num, 'test_acc'].values[0]
-                            
+                                convergence = 0
+                                cur_model_name = 'acc='+str(int(convergence))+ '_' \
+                                    + '/'.join(ckpt.split('/')[3:]).replace(str(iter_num), '0') \
+                                    + f'_nembd={gptconfig.n_embd}_nlayers={gptconfig.n_layer}' + f'_{init_scheme}'
                             except:
-                                convergence = df.loc[:, 'test_acc'].values.max()
-                            cur_model_name = 'acc='+str(int(convergence))+ '_' \
+                                cur_model_name = 'acc=0'+ '_' \
                                     + '/'.join(ckpt.split('/')[3:]) \
-                                    + f'_nembd={gptconfig.n_embd}_nlayers={gptconfig.n_layer}' + '_trained'
+                                    + f'_nembd={gptconfig.n_embd}_nlayers={gptconfig.n_layer}' + f'_Init_{init_scheme}'
                             useful_name_list.append(cur_model_name)
+
+                        # with io.capture_output() as captured:
+                        #     model, gptconfig = load_checkpoint(
+                        #         ckpt,
+                        #         GPTConfig_nope,
+                        #         GPT_nope,
+                        #         device="cuda" if torch.cuda.is_available() else "cpu",
+                        #         return_config=True,
+                        #         init=model_init,
+                        #         init_additional_config=init_additional_config,
+                        #     )
+                        #     if small_dim:
+                        #         gptconfig.n_head = 1
+                        #         # gptconfig.not_causal = True
+                        #         gptconfig.n_embd = 16
+                        #         model = GPT_nope(gptconfig)
+                                            
+                        #     model.eval()
+                        #     model.to(device)
+                        #     model_list.append(model)
+                        #     try:
+                        #         iter_num = int(ckpt.split('_')[-1].split('.')[0])
+                        #         convergence = df.loc[df['iter']==iter_num, 'test_acc'].values[0]
+                            
+                        #     except:
+                        #         convergence = df.loc[:, 'test_acc'].values.max()
+                        #     cur_model_name = 'acc='+str(int(convergence))+ '_' \
+                        #             + '/'.join(ckpt.split('/')[3:]) \
+                        #             + f'_nembd={gptconfig.n_embd}_nlayers={gptconfig.n_layer}' + '_trained'
+                        #     useful_name_list.append(cur_model_name)
 
                 except (ValueError, IndexError) as e:
                     print(f"no model {glob_dir}")
@@ -264,7 +260,6 @@ if __name__ == '__main__':
                     continue
 
             n_embd = model_list[0].config.n_embd
-            equation_num = 1
             causal_training = True # for add3
             total_tokens = total_samples * 2 * fixed_length * equation_num
             diviser = 256 if causal_training else fixed_length
@@ -286,6 +281,8 @@ if __name__ == '__main__':
                     full_eqn = '\n' * (fixed_length-len(full_eqn))  + full_eqn
                 full_eqn = full_eqn[:fixed_length]
                 X_n.append(full_eqn)
+                if len(X_n) >= total_samples:
+                    break
             X_n = X_n[:total_samples]
             X = torch.tensor(list(map(lambda x: encode(x), X_n))).long()
             print(X.shape, X.type())
@@ -396,50 +393,84 @@ if __name__ == '__main__':
             level_corr_mat_accum = []
             # corr_mat = []
             u1, u2, u1_name, u2_name = None, None, None, None
-
-            task_name = 'add_'
-            folder_name = f'corr_{task_name}' if not equal_distancing_exp else f'dot_{task_name}'
-            folder_name += '_trained' if not model_init else '_init'
-
-            for k in ablation_config:
-                if ablation_config[k]:
-                    if k == 'func_config':
-                        folder_name += f'_{ablation_config[k]}'
-                    else: 
-                        folder_name += f'_{k}' 
-            from vis_utils import get_PE_tendency, generate_tendency_map
-
             all_stats = None
 
-            get_corr = functools.partial(get_corr_original, 
+            get_corr_general = functools.partial(get_corr_original, 
                                         useful_name_list=useful_name_list,
                                         all_level_input_act_list=all_level_input_act_list,
                                         sim_func=sim_func,
                                         X_n=X_n,
                                         folder_name=folder_name,
                                         fixed_length=fixed_length,
-                                        equal_distancing_exp=equal_distancing_exp)
+                                        equal_distancing_exp=equal_distancing_exp,
+                                        all_out_list=all_out_list,)
             
-            get_corr = functools.partial(get_corr,
-                                        level=0,
-                                    standard=6,
-                                    drop_down=useful_name_list[0],
-                                    drop_down2=None,
-                                    drop_down3=None,
-                                    plot_type='dot',
-                                    all_models=False,
-                                    before_after='training',
-                                    save=True,
-                                    abs=False,
-                                    save_all=False,
-                                    accumulate_all=False,
-                                    subplot_layers=True)
+            # get_corr = functools.partial(get_corr,
+            #                             level=0,
+            #                         standard=6,
+            #                         # drop_down=useful_name_list[0],
+            #                         # drop_down2=None,
+            #                         # drop_down3=None,
 
-            for i in range(5, 100, 5):
-                get_corr(sample_idx=i, individual_sample=True)
+            #                         drop_down=useful_name_list[0],
+            #                         drop_down2=useful_name_list[1],
+            #                         drop_down3=useful_name_list[2],
 
-            get_corr(sample_idx=0, individual_sample=False)
-        except:
+            #                         plot_type='dot',
+            #                         all_models=False,
+
+            #                         # before_after='training',
+            #                         before_after=False,
+
+            #                         save=True,
+            #                         abs=False,
+            #                         save_all=False,
+            #                         accumulate_all=False,
+            #                         subplot_layers=True)
+
+            # for i in range(5, 100, 10):
+            #     get_corr(sample_idx=i, individual_sample=True)
+
+            for i_idx in range(len(useful_name_list)):
+                get_corr = functools.partial(get_corr_general,
+                            level=0,
+                            standard=6,
+                            drop_down=useful_name_list[i_idx],
+
+                            drop_down2=None,
+                            drop_down3=None,
+
+                            plot_type='dot',
+                            all_models=False,
+
+                            # before_after='training',
+                            before_after=False,
+
+                            save=True,
+                            abs=False,
+                            save_all=False,
+                            accumulate_all=False,
+                            subplot_layers=True)
+                
+                # for i in range(5, 100, 10):
+                #     returns = get_corr(sample_idx=i, individual_sample=True)
+
+                returns = get_corr(sample_idx=0, individual_sample=False)
+
+                if returns is None: continue
+                df_cm, df_norm = returns
+                all_df_cm.append(df_cm)
+                all_df_norm.append(df_norm)
+
+            
+        except Exception as e:
+            print(f"error in {task_type}")
+            print(e)
             pass
-            
+    
+    if len(all_df_cm) > 0:
+        all_df_cm = pd.concat(all_df_cm)
+        all_df_cm.to_csv(f'{folder_name}/cm.csv')
+        all_df_norm = pd.concat(all_df_norm)
+        all_df_norm.to_csv(f'{folder_name}/norm.csv')
                     
